@@ -45,51 +45,100 @@ class QueryOutput(TypedDict):
 # --- Prompts ---
 
 # Prompt for extracting necessary tables (from your main.py)
+# Prompt for extracting necessary tables (Simplified)
 EXTRACT_TABLES_PROMPT_TEMPLATE = """
-You are a helpful assistant that analyzes natural language questions to determine whether accessing a database is necessary to answer them. You must extract two pieces of information:
+You are a helpful assistant that analyzes natural language questions to determine whether accessing a database is necessary. You must extract two pieces of information:
 
 1. is_required_database: A boolean value.
-- Return true if answering the question requires data from the database from below table info context.
-- Return false if the question can be answered without querying the database (e.g., it's a general or definitional question).
+   - Return true if answering the question requires data from the database, based on the available tables listed in `all_table_info`.
+   - Return false if the question can be answered without querying the database (e.g., it's a general or definitional question).
 
 2. tables_required: A list of strings.
-- Include the names of all tables that must be accessed in order to answer the question accurately.
-- Don't add uncessory tables names strictly just add necessory tables
-- Return an empty list if is_required_database is false.
+   - If `is_required_database` is true, include the names of ONLY the tables that are strictly necessary to retrieve the data to answer the question.
+   - Focus on tables that *directly contain* the requested information.
+   - Return an empty list if `is_required_database` is false.
 
-You must only include table names mentioned in the question or strongly implied.
-
-here is user question :
 Question: {question}
 
-Here is table info:
+Available Tables Overview (for general guidance on what data exists, not for specific column names):
 {all_table_info}
+
+Key Instructions for selecting `tables_required`:
+-   Read the user's question carefully to understand the specific data points requested.
+-   Consult the "Available Tables Overview" to identify potential tables that might contain the required information.
+-   **Crucially, select only the tables that DIRECTLY contain the specific data needed.**
+-   **Regarding `company_master`:**
+    -   If the question ONLY asks for information directly present in `company_master` (e.g., `fincode`, `scripcode`, `industry` for a given company name), then ONLY `company_master` is required.
+        Example: "What is the industry of Reliance?" -> `tables_required: ['company_master']`
+    -   If the question asks for data about a specific company (e.g., "market cap of TCS", "current price of Aegis Logistics") AND the primary data point (e.g., market cap, price) is located in a table *other than* `company_master`:
+        1.  Include the table that *directly contains that specific data point* in `tables_required`. (e.g., `company_equity` for market cap, a price table like `bse_adjusted_price_eod` for price).
+        2.  ALSO include `company_master` in `tables_required` if a company name is provided in the question, as `company_master` is needed to resolve the company name to a `fincode` which is then used to query the other table.
+        Example: "market cap of TCS" -> data is in `company_equity`, name "TCS" needs `fincode` from `company_master`. Thus, `tables_required: ['company_master', 'company_equity']`.
+        Example: "current price of Aegis Logistics" -> price data is in a price table (e.g., `bse_adjusted_price_eod`), name "Aegis Logistics" needs `fincode` from `company_master`. Thus, `tables_required: ['company_master', 'PRICE_TABLE_NAME']` (where PRICE_TABLE_NAME is the relevant table like `bse_adjusted_price_eod`).
+-   If consolidated figures are explicitly asked for or implied, prefer tables ending with `_cons`. Otherwise, assume standalone.
+-   Do NOT include tables unnecessarily. Only list tables from which data will be directly selected or are essential for a join to get the answer.
+-   If `is_required_database` is false, `tables_required` MUST be an empty list.
+
+Your output MUST be a valid JSON object matching the `ExtractOutput` schema.
 """
 
 # System prompt for SQL query generation (from your main.py, ensuring dialect is handled)
+# System prompt for SQL query generation (More forceful on columns_context)
 WRITE_QUERY_SYSTEM_MESSAGE = """
-Given an input question, create a syntactically correct {dialect} query to
-run to help find the answer. Unless the user specifies in his question a
-specific number of examples they wish to obtain, always limit your query to
-at most {top_k} results. You can order the results by a relevant column to
-return the most interesting examples in the database.
+    Given an input question, create a syntactically correct {dialect} query to
+    run to help find the answer. Unless the user specifies in his question a
+    specific number of examples they wish to obtain, always limit your query to
+    at most {top_k} results. You can order the results by a relevant column to
+    return the most interesting examples in the database.
 
-Never query for all the columns from a specific table, only ask for a the
-few relevant columns given the question.
+    --- CRITICAL INSTRUCTION: COLUMN NAMES SOURCE OF TRUTH ---
+    You are provided with `columns_context`. This `columns_context` contains the ACCURATE and DETAILED schema
+    (including table names, EXACT column names, and data types) for ONLY the tables identified as relevant to the current question.
+    YOU MUST USE THIS `columns_context` AS THE **ABSOLUTE AND ONLY SOURCE OF TRUTH FOR COLUMN NAMES** for the tables listed within it.
+    Do NOT invent column names, do NOT use column names you *think* should exist, and do NOT use column names from the general `table_info` if they conflict with `columns_context`.
+    If `columns_context` shows that the 'price' information in table `bse_adjusted_price_eod` is in a column named `value`, you MUST use `value`.
+    If it says a column is `fincode_id`, use `fincode_id`, not `fincode`.
+    PRIORITIZE `columns_context` OVER ALL OTHER INFORMATION FOR COLUMN SELECTION.
+    --- END CRITICAL INSTRUCTION ---
 
-Pay attention to use only the column names that you can see in the schema
-description. Be careful to not query for columns that do not exist. Also,
-pay attention to which column is in which table.
+    When returning numeric values such as `mcap` or `sales`, remember that:
+    - These values are typically stored in **absolute Indian Rupees (₹)**.
+    - You SHOULD clarify the **unit** in the natural language answer (e.g., say “₹2.16 lakh crore” instead of “216011000000”), especially for large financial values.
+    - However, do NOT scale or format these numbers in the SQL query itself unless explicitly asked. Just retrieve the raw values and explain their scale in the final output.
 
-Only use the following tables (general overview):
-{table_info}
+    Never query for all the columns from a specific table, only ask for the
+    few relevant columns given the question, based on the `columns_context`.
 
-Detailed columns context for relevant tables (use this primarily for query construction):
-{columns_context}
+    --- CRITICAL INSTRUCTIONS FOR COMPANY NAME LOOKUPS TO GET A SINGLE FINCODE ---
+    If you need to retrieve a `fincode` from the `company_master` table based on a company name mentioned by the user (e.g., "Reliance", "TCS", "Infosys") for use in a `WHERE` clause of a parent query:
+    1.  You MUST use a subquery to select this `fincode`.
+    2.  This subquery **MUST ITSELF** return only ONE `fincode`.
+    3.  To achieve this, the subquery structure should be:
+        `(SELECT fincode FROM company_master WHERE compname LIKE '%USER_MENTIONED_NAME%' ORDER BY LENGTH(compname) ASC LIMIT 1)`
+        The `ORDER BY LENGTH(compname) ASC LIMIT 1` clause is **INSIDE this subquery**.
 
-Additionally, when necessary, include appropriate JOINS between multiple tables based on their relationships to retrieve the required data.
-also add limit when it necessory.
+        Example of using this subquery correctly if `columns_context` confirms `mcap` is in `company_equity`:
+        `SELECT mcap FROM company_equity WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%SomeCompany%' ORDER BY LENGTH(compname) ASC LIMIT 1)`
+    --- END OF CRITICAL COMPANY NAME LOOKUP INSTRUCTIONS ---
+
+    IMPORTANT FOR JOINS:
+    When joining tables, if a column name exists in multiple tables (e.g., 'fincode'),
+    YOU MUST qualify the column name with the table name (e.g., 'company_master.fincode')
+    in the SELECT list and other clauses to avoid ambiguity, as indicated in `columns_context`.
+
+    General overview of all available tables (for context only, `columns_context` is primary for query details):
+    {table_info}
+
+    DETAILED AND ACCURATE SCHEMA FOR RELEVANT TABLES (YOUR PRIMARY GUIDE FOR QUERY CONSTRUCTION):
+    {columns_context}
+
+    Additionally, when necessary, include appropriate JOINS between multiple tables based on their relationships.
+    For price data (e.g., from `bse_adjusted_price_eod`), if the `columns_context` shows a date column, usually the latest available price is required, so order by that date column descending and limit to 1.
+
+    Answer directly without any unncessary extra answers, straight to the point.
 """
+
+
 USER_PROMPT_FOR_QUERY = "Question: {input}"
 query_prompt_template = ChatPromptTemplate.from_messages(
     [("system", WRITE_QUERY_SYSTEM_MESSAGE), ("user", USER_PROMPT_FOR_QUERY)]
@@ -207,9 +256,16 @@ def get_columns_context_node(state: AgentState):
         print("No tables required, providing generic column context.")
         return {"columns_context": "No specific tables were identified as necessary for this query."}
     try:
-        context = get_column_info.invoke({"table_names": required_tables})
-        print(f"Columns Context for {required_tables} generated.")
-        return {"columns_context": context}
+        # Assuming get_column_info.invoke returns a string representation of the schema
+        context_str = get_column_info.invoke({"table_names": required_tables})
+        print(f"Successfully invoked get_column_info for: {required_tables}")
+        print(f"--- DETAILED COLUMNS CONTEXT BEING PASSED TO QUERY WRITER (Length: {len(context_str)}) ---")
+        print(context_str) # PRINT THE ACTUAL CONTEXT STRING
+        print(f"--- END DETAILED COLUMNS CONTEXT ---")
+        if not context_str or context_str.strip() == "":
+            print("WARNING: get_column_info returned empty context despite tables being required.")
+            return {"columns_context": f"Empty schema context returned for {required_tables}. Query construction will be impaired."}
+        return {"columns_context": context_str}
     except Exception as e:
         print(f"Error in get_columns_context_node: {e}")
         return {"columns_context": f"Error fetching column details: {e}. Using general table info."}

@@ -12,6 +12,7 @@ from sqlalchemy import text
 from model_config import groq_llm
 from db_config import engine # Your SQLAlchemy engine
 from tools.technical_indicators import INDICATOR_TOOLS_MAP
+import numpy as np
 
 load_dotenv()
 
@@ -316,6 +317,23 @@ def fetch_price_data_node(state: TechnicalAgentState):
         return {"price_data": None, "indicator_result": {"error": error_detail}}
 
 
+# We will simply use this function to convert the indicator result to native python type
+def convert_numpy_to_python(data: Any) -> Any:
+    """Recursively converts numpy types in a data structure to native Python types."""
+    if isinstance(data, dict):
+        return {k: convert_numpy_to_python(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_numpy_to_python(i) for i in data]
+    elif isinstance(data, np.integer):
+        return int(data)
+    elif isinstance(data, np.floating):
+        return float(data)
+    elif isinstance(data, np.ndarray):
+        return data.tolist() # Convert numpy arrays to lists
+    elif isinstance(data, np.bool_):
+        return bool(data)
+    return data
+
 def calculate_indicator_node(state: TechnicalAgentState):
     print("---NODE: Calculate Indicator---")
     extraction = state["extraction_output"]
@@ -339,9 +357,10 @@ def calculate_indicator_node(state: TechnicalAgentState):
     print(f"Invoking {indicator_name} tool with its hardcoded default parameters.")
     try:
         # Pass the list of dicts directly to the indicator function
-        result = tool_function(price_data) 
-        print(f"Indicator Result ({indicator_name}): {result}")
-        return {"indicator_result": result}
+        raw_result = tool_function(price_data) 
+        python_native_result = convert_numpy_to_python(raw_result) # to convert the indicator result to native python type
+        print(f"Indicator Result ({indicator_name}, converted): {python_native_result}")
+        return {"indicator_result": python_native_result}
     except Exception as e:
         print(f"Error calculating {indicator_name}: {e}")
         import traceback
@@ -568,7 +587,7 @@ graph_builder_tech.add_edge("generate_out_of_domain_answer", "finalize_answer") 
 
 graph_builder_tech.add_edge("finalize_answer", END)
 
-app_technical = graph_builder_tech.compile()
+app = graph_builder_tech.compile()
 
 
 
@@ -599,7 +618,7 @@ if __name__ == "__main__":
         inputs = {"question": q_text}
         try:
             config = {"recursion_limit": 15} # Reset to 15, should be enough for simpler flow
-            for event in app_technical.stream(inputs, config=config):
+            for event in app.stream(inputs, config=config):
                 for node_name, state_update_dict in event.items():
                     print(f"--- Event from Node: {node_name} ---")
                     if isinstance(state_update_dict, dict):
@@ -625,7 +644,7 @@ if __name__ == "__main__":
 
     try:
         print("\nAttempting to generate technical_agent_graph.png...")
-        img_data = app_technical.get_graph().draw_mermaid_png()
+        img_data = app.get_graph().draw_mermaid_png()
         with open("technical_agent_graph.png", "wb") as f:
             f.write(img_data)
         print("Graph saved to technical_agent_graph.png")

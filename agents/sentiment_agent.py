@@ -149,7 +149,7 @@ class AgentState(TypedDict):
     news_items: List[Dict[str, str]] # Original news items
     sentiment_results: List[Dict[str, Any]] # title, preview, url, sentiment_label, sentiment_scores
     aggregated_sentiment: Dict[str, Any] # majority_vote, percentages
-    final_summary: str
+    final_answer: str
 
 
 def clean_tavily_content(raw_content: str) -> str:
@@ -297,7 +297,7 @@ def llm_summary_node(state: AgentState):
         print(f"Error calling Groq LLM: {e}")
         summary = f"Error generating summary with LLM: {e}"
         
-    return {"final_summary": summary}
+    return {"final_answer": summary}
 
 # --- Graph Definition ---
 workflow = StateGraph(AgentState)
