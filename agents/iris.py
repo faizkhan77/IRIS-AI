@@ -492,16 +492,9 @@ if __name__ == "__main__":
 
         test_queries = [
             "Hello IRIS, nice to meet you!",
-            "What's the current sentiment for Google (GOOGL) stock?",
-            "What is the market cap of Reliance?",
+            
             "What's the latest Net Cash Flow of Reliance",
-            "whats the fincode and scripcode of Reliance industries",
-            "What is the current price of Aegis Logistics stock",
-            "Please remember my favorite stock symbol is AAPL and my risk tolerance is medium.",
-            "What's the RSI for Reliance?",
-            "Thanks! Also, note that I'm aiming for long-term investments.",
-            "What was my favorite stock symbol I mentioned?", # Test LTM (via supervisor prompt)
-            "What did I say about my investment horizon?" # Test LTM
+           
         ]
 
         # Initial state for the stream must include fields expected by the first node
