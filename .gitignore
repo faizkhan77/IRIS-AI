@@ -23,4 +23,6 @@ artifacts/finbert_finetuned.pt
 
 
 iris_stm_checkpoint_test.sqlite
+iris_stm_checkpoint_test.sqlite-wal
+iris_stm_checkpoint_test.sqlite-shm
 
