@@ -92,8 +92,6 @@ def run_iris_test_session():
         print(f"{Fore.RED}Email address is required to start. Exiting.{Style.RESET_ALL}")
         return
 
-    # Use a unique LangGraph thread ID for this entire test session
-    # This allows conversation continuity within this single run of test_iris.py
     session_lg_thread_id = f"test_cli_thread_{str(uuid.uuid4())[:8]}"
     
     print(f"\n{Fore.CYAN}--- Session Details ---")
@@ -104,27 +102,18 @@ def run_iris_test_session():
     print(f"{Fore.YELLOW}Type 'exit', 'quit', or 'bye' to end the session.{Style.RESET_ALL}\n")
 
     # 2. Compile IRIS App with Checkpointer
-    # The checkpointer context needs to be active for the duration of the session
     with SqliteSaver.from_conn_string(STM_CHECKPOINT_DB) as checkpointer:
         print(f"{Fore.CYAN}Compiling IRIS graph with SQLite checkpointer ({STM_CHECKPOINT_DB})...{Style.RESET_ALL}")
         iris_app = iris_graph_builder.compile(checkpointer=checkpointer)
         print(f"{Fore.GREEN}IRIS graph compiled successfully.{Style.RESET_ALL}\n")
 
-        # Configuration for LangGraph stream
         config_for_stream = {"configurable": {"thread_id": session_lg_thread_id}}
         
-        # Initial input for the graph for this session
         base_inputs = {
-            "user_identifier": user_email, # This is the LTM key
+            "user_identifier": user_email,
             "langgraph_thread_id": session_lg_thread_id,
-            # 'db_user_id' and 'db_session_id' will be set by the graph
         }
-        if user_name: # Pass name if provided, db_ltm.get_or_create_user can use it
-            # This isn't directly in IrisState, but db_ltm.get_or_create_user can accept it.
-            # For now, get_or_create_user in db_ltm.py takes email and optional name.
-            # IrisState doesn't need 'user_name' directly.
-            pass
-
+        # user_name is handled by db_ltm, not needed in state
 
         # 3. Conversation Loop
         while True:
@@ -132,10 +121,6 @@ def run_iris_test_session():
 
             if user_query.lower() in ["exit", "quit", "bye"]:
                 print(f"{Fore.MAGENTA}Ending session. Goodbye!{Style.RESET_ALL}")
-                # Optionally, call db_ltm.end_ltm_session here if you want to mark it in LTM
-                # This would require fetching the db_session_id from the last state,
-                # or modifying IRIS to return it or for db_ltm to find it via langgraph_thread_id.
-                # For simplicity, we'll skip explicit LTM session ending here.
                 break
 
             if not user_query:
@@ -143,66 +128,29 @@ def run_iris_test_session():
 
             current_turn_inputs = {**base_inputs, "user_input": user_query}
             final_iris_response = None
-            node_flow = []
-
+            
+            # The console output from iris.py will show the node flow.
+            # Here, we just focus on getting the final result.
+            print(f"{Fore.BLUE}--- IRIS Processing Start ---{Style.RESET_ALL}")
             with loading_animation("IRIS is thinking..."):
                 try:
+                    # Stream the events to find the final response
                     for event_value_map in iris_app.stream(current_turn_inputs, config=config_for_stream, stream_mode="values"):
-                        # Identify the node that just ran
-                        # The event_value_map keys are the fields updated by the last node(s).
-                        # The last key in the dict is often the primary output of the node.
-                        # For a more accurate "current node," LangGraph event stream with `stream_mode="events"`
-                        # would be better, but "values" is simpler for getting state.
-                        
-                        # Heuristic: the last key in the event that is not a known state key
-                        # or a special key like "__end__" might indicate the node.
-                        # This is a bit tricky with stream_mode="values".
-                        # Let's just track major state updates.
-                        
-                        updated_keys = list(event_value_map.keys())
-                        # Try to infer node from updated keys, or use a simpler message
-                        # For simplicity in this test script, we'll focus on the final output.
-                        # More detailed node tracking would involve inspecting the 'op' in 'events' stream_mode.
-
-                        # We can print when key parts of the state are updated.
-                        if "supervisor_decision_output" in event_value_map and event_value_map["supervisor_decision_output"]:
-                            node_name = "Supervisor Decide"
-                            if node_name not in node_flow: node_flow.append(node_name)
-                        elif "intermediate_response" in event_value_map and event_value_map["intermediate_response"]:
-                            # Could be sub-agent call or direct iris response
-                            # Determine based on supervisor_decision.route if available
-                            # For now, generic
-                            if "Call" not in " ".join(node_flow) and "Prepare Direct" not in " ".join(node_flow):
-                                supervisor_decision = event_value_map.get("supervisor_decision_output")
-                                if supervisor_decision:
-                                    route = supervisor_decision.route
-                                    if route in ["fundamentals", "sentiment", "technicals"]:
-                                        node_name = f"Call {route.capitalize()} Agent"
-                                    else:
-                                        node_name = "Prepare Direct IRIS Response"
-                                    if node_name not in node_flow: node_flow.append(node_name)
-
                         if "final_response" in event_value_map and event_value_map["final_response"]:
                             final_iris_response = event_value_map["final_response"]
-                            if "Finalize Response" not in node_flow: node_flow.append("Finalize Response")
-                    
-                    # Print node flow after processing is complete
-                    if node_flow:
-                        flow_str = " -> ".join([f"{Fore.CYAN}{name}{Style.RESET_ALL}" for name in node_flow])
-                        print(f"\r{Fore.BLUE}Processed flow: {flow_str} {Fore.GREEN}✔️{Style.RESET_ALL}")
-
+                
                 except Exception as e:
                     print(f"\r{Fore.RED}Error during IRIS processing: {e}{Style.RESET_ALL}")
                     import traceback
                     traceback.print_exc()
                     final_iris_response = "I encountered an error. Please try again."
 
+            print(f"{Fore.BLUE}--- IRIS Processing End ---{Style.RESET_ALL}")
+
             if final_iris_response:
                 print(f"{Fore.GREEN}IRIS: {Style.RESET_ALL}{final_iris_response}")
             else:
                 print(f"{Fore.RED}IRIS: No response generated.{Style.RESET_ALL}")
-            
-            node_flow.clear() # Reset for next turn
 
 
 if __name__ == "__main__":

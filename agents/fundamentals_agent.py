@@ -1,492 +1,413 @@
 # fundamentals_agent.py
 from langgraph.graph import START, StateGraph, END
-from typing import TypedDict, Annotated, List as TypingList # Renamed to avoid conflict with List from typing
+from typing import TypedDict, Annotated, List as TypingList, Union, Dict
 from langchain_community.tools.sql_database.tool import QuerySQLDatabaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_community.utilities import SQLDatabase
 from dotenv import load_dotenv
 import os
+import json
 
-# Custom module imports (ensure these paths are correct for your project structure)
-from model_config import groq_llm # This should now use the model like llama-3.3-70b-versatile
+# --- RAG INTEGRATION: Import the function that provides dynamic context ---
+from agents.rag_context_provider import get_rag_based_context
+
+# Custom module imports (ensure these paths are correct)
+from model_config import groq_llm
 from db_config import engine
-from artifacts.tables import all_table_info
-from tools.table_info import get_column_info # Relies on FILEMAPPING from utils.mapping
 
-# For graph visualization if run directly
+# For graph visualization
 from IPython.display import Image, display
-
 
 load_dotenv()
 
 db = SQLDatabase(engine=engine)
 
-# --- Define TypedDicts for State and Outputs ---
-class ExtractOutput(TypedDict):
-    """Output of the table extraction step."""
-    is_required_database: Annotated[bool, ..., "Is required call database to get context for response"]
-    tables_required: Annotated[TypingList[str], ...,"List of required table names to get database for question "]
+# TypedDicts are the same as before, no changes needed here.
+class IdentifiedEntityInfo(TypedDict):
+    entity_name: Annotated[str, "The name of the company/stock symbol identified."]
 
-class AgentState(TypedDict): # Renamed to AgentState for clarity if used elsewhere
+class ExtractionOutput(TypedDict):
+    is_required_database: Annotated[bool, "Is database access required?"]
+    entities_info: Annotated[TypingList[IdentifiedEntityInfo], "List of entities found in the query."]
+    entity_task_description: Annotated[Dict[str, str], "A dictionary mapping entity_name to a brief description of what data is needed for it. Use 'General Query' for non-entity questions."]
+
+class GeneralizedQueryOutput(TypedDict):
+    """Output for the generalization step."""
+    generalized_question: str
+
+class AgentState(TypedDict):
     question: str
-    extract: ExtractOutput
-    columns_context: str # Detailed schema for relevant tables
-    query: str
-    result: str # SQL execution result
-    answer: str # Initial natural language answer from DB path or general response
-    final_answer: str # Polished final answer
+    extract: ExtractionOutput
+    generalized_tasks: Dict[str, str]
+    columns_context: str
+    queries_meta: TypingList[Dict[str, Union[str, bool]]]
+    results: TypingList[str]
+    answer: str
+    final_answer: str
 
 class QueryOutput(TypedDict):
-    """Generated SQL query by the LLM."""
     query: Annotated[str, "Syntactically valid SQL query."]
 
+# Prompts are also the same as before, they are already well-defined.
+EXTRACT_MULTI_ENTITY_PROMPT_TEMPLATE = """
+You are an expert financial data extraction assistant. Your job is to analyze the user's question to identify financial entities and describe the task for each. You DO NOT need to identify database tables.
 
-# --- Prompts ---
+User Question: {question}
 
-# Prompt for extracting necessary tables (from your main.py)
-# Prompt for extracting necessary tables (Simplified)
-EXTRACT_TABLES_PROMPT_TEMPLATE = """
-You are a helpful assistant that analyzes natural language questions to determine whether accessing a database is necessary. You must extract two pieces of information:
+Your task is to produce a JSON object adhering to the 'ExtractionOutput' schema.
+1.  `is_required_database`: Set to `true` if financial data is needed.
+2.  `entities_info`: Identify ALL distinct company names or stock symbols.
+3.  `entity_task_description`: For each `entity_name`, provide a concise description of the information the user wants for that entity. If the query is general and has no specific entity, you must use "General Query" as the key.
 
-1. is_required_database: A boolean value.
-   - Return true if answering the question requires data from the database, based on the available tables listed in `all_table_info`.
-   - Return false if the question can be answered without querying the database (e.g., it's a general or definitional question).
+Schema for 'ExtractionOutput':
+{{
+  "is_required_database": "boolean",
+  "entities_info": [
+    {{
+      "entity_name": "string (e.g., 'Reliance Industries', 'TCS')"
+    }}
+  ],
+  "entity_task_description": {{
+      "entity_name_1": "string (e.g., 'market capitalization')",
+      "entity_name_2": "string (e.g., 'latest sales figures')",
+      "General Query": "string (e.g., 'list all distinct industries')"
+  }}
+}}
 
-2. tables_required: A list of strings.
-   - If `is_required_database` is true, include the names of ONLY the tables that are strictly necessary to retrieve the data to answer the question.
-   - Focus on tables that *directly contain* the requested information.
-   - Return an empty list if `is_required_database` is false.
+--- EXAMPLES ---
+User Question: "What is the market cap of Reliance and latest sales of Infosys?"
+Your Output:
+{{
+  "is_required_database": true,
+  "entities_info": [
+    {{"entity_name": "Reliance"}},
+    {{"entity_name": "Infosys"}}
+  ],
+  "entity_task_description": {{
+      "Reliance": "market capitalization of Reliance",
+      "Infosys": "latest sales figures for Infosys"
+  }}
+}}
 
-Question: {question}
+User Question: "List all distinct industries"
+Your Output:
+{{
+    "is_required_database": true,
+    "entities_info": [],
+    "entity_task_description": {{
+        "General Query": "List all distinct industries from the database"
+    }}
+}}
+---
 
-Available Tables Overview (for general guidance on what data exists, not for specific column names):
-{all_table_info}
-
-Key Instructions for selecting `tables_required`:
--   Read the user's question carefully to understand the specific data points requested.
--   Consult the "Available Tables Overview" to identify potential tables that might contain the required information.
--   **Crucially, select only the tables that DIRECTLY contain the specific data needed.**
--   **Regarding `company_master`:**
-    -   If the question ONLY asks for information directly present in `company_master` (e.g., `fincode`, `scripcode`, `industry` for a given company name), then ONLY `company_master` is required.
-        Example: "What is the industry of Reliance?" -> `tables_required: ['company_master']`
-    -   If the question asks for data about a specific company (e.g., "market cap of TCS", "current price of Aegis Logistics") AND the primary data point (e.g., market cap, price) is located in a table *other than* `company_master`:
-        1.  Include the table that *directly contains that specific data point* in `tables_required`. (e.g., `company_equity` for market cap, a price table like `bse_adjusted_price_eod` for price).
-        2.  ALSO include `company_master` in `tables_required` if a company name is provided in the question, as `company_master` is needed to resolve the company name to a `fincode` which is then used to query the other table.
-        Example: "market cap of TCS" -> data is in `company_equity`, name "TCS" needs `fincode` from `company_master`. Thus, `tables_required: ['company_master', 'company_equity']`.
-        Example: "current price of Aegis Logistics" -> price data is in a price table (e.g., `bse_adjusted_price_eod`), name "Aegis Logistics" needs `fincode` from `company_master`. Thus, `tables_required: ['company_master', 'PRICE_TABLE_NAME']` (where PRICE_TABLE_NAME is the relevant table like `bse_adjusted_price_eod`).
--   If consolidated figures are explicitly asked for or implied, prefer tables ending with `_cons`. Otherwise, assume standalone.
--   Do NOT include tables unnecessarily. Only list tables from which data will be directly selected or are essential for a join to get the answer.
--   If `is_required_database` is false, `tables_required` MUST be an empty list.
-
-Your output MUST be a valid JSON object matching the `ExtractOutput` schema.
+Output ONLY the valid JSON object. Do not include any other text or explanations.
 """
 
-# System prompt for SQL query generation (from your main.py, ensuring dialect is handled)
-# System prompt for SQL query generation (More forceful on columns_context)
 WRITE_QUERY_SYSTEM_MESSAGE = """
-    Given an input question, create a syntactically correct {dialect} query to
-    run to help find the answer. Unless the user specifies in his question a
-    specific number of examples they wish to obtain, always limit your query to
-    at most {top_k} results. You can order the results by a relevant column to
-    return the most interesting examples in the database.
+You are an SQL query writing expert. Given an input question, a specific task description, and a highly relevant `columns_context` (from a RAG system), create ONE syntactically correct {dialect} query.
 
-    --- CRITICAL INSTRUCTION: COLUMN NAMES SOURCE OF TRUTH ---
-    You are provided with `columns_context`. This `columns_context` contains the ACCURATE and DETAILED schema
-    (including table names, EXACT column names, and data types) for ONLY the tables identified as relevant to the current question.
-    YOU MUST USE THIS `columns_context` AS THE **ABSOLUTE AND ONLY SOURCE OF TRUTH FOR COLUMN NAMES** for the tables listed within it.
-    Do NOT invent column names, do NOT use column names you *think* should exist, and do NOT use column names from the general `table_info` if they conflict with `columns_context`.
-    If `columns_context` shows that the 'price' information in table `bse_adjusted_price_eod` is in a column named `value`, you MUST use `value`.
-    If it says a column is `fincode_id`, use `fincode_id`, not `fincode`.
-    PRIORITIZE `columns_context` OVER ALL OTHER INFORMATION FOR COLUMN SELECTION.
-    --- END CRITICAL INSTRUCTION ---
+Original User Question (for overall context): "{original_question}"
+Current Task Description (focus for THIS query): "{current_task_description}"
+Entity Name (if applicable, for subquery): "{current_entity_name}"
 
-    When returning numeric values such as `mcap` or `sales`, remember that:
-    - These values are typically stored in **absolute Indian Rupees (₹)**.
-    - You SHOULD clarify the **unit** in the natural language answer (e.g., say “₹2.16 lakh crore” instead of “216011000000”), especially for large financial values.
-    - However, do NOT scale or format these numbers in the SQL query itself unless explicitly asked. Just retrieve the raw values and explain their scale in the final output.
+--- CRITICAL INSTRUCTION: COLUMN NAMES SOURCE OF TRUTH ---
+Use `columns_context` (detailed schema for relevant tables provided by a RAG system) AS THE ABSOLUTE AND ONLY SOURCE OF TRUTH FOR TABLE AND COLUMN NAMES.
+Do NOT invent column names. PRIORITIZE `columns_context`. If a required column is not in the context, do your best with what is provided.
+--- END CRITICAL INSTRUCTION ---
 
-    Never query for all the columns from a specific table, only ask for the
-    few relevant columns given the question, based on the `columns_context`.
+DETAILED SCHEMA FOR RELEVANT TABLES (YOUR PRIMARY GUIDE):
+{columns_context}
 
-    --- CRITICAL INSTRUCTIONS FOR COMPANY NAME LOOKUPS TO GET A SINGLE FINCODE ---
-    If you need to retrieve a `fincode` from the `company_master` table based on a company name mentioned by the user (e.g., "Reliance", "TCS", "Infosys") for use in a `WHERE` clause of a parent query:
-    1.  You MUST use a subquery to select this `fincode`.
-    2.  This subquery **MUST ITSELF** return only ONE `fincode`.
-    3.  To achieve this, the subquery structure should be:
-        `(SELECT fincode FROM company_master WHERE compname LIKE '%USER_MENTIONED_NAME%' ORDER BY LENGTH(compname) ASC LIMIT 1)`
-        The `ORDER BY LENGTH(compname) ASC LIMIT 1` clause is **INSIDE this subquery**.
+--- CRITICAL INSTRUCTIONS FOR COMPANY NAME LOOKUPS ---
+If `current_entity_name` is not 'General Query', you MUST use a subquery to find its `fincode` from `company_master`.
+Example for `current_entity_name = "SomeCompany"`:
+`... WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%SomeCompany%' ORDER BY LENGTH(compname) ASC LIMIT 1)`
+--- END OF CRITICAL INSTRUCTIONS ---
 
-        Example of using this subquery correctly if `columns_context` confirms `mcap` is in `company_equity`:
-        `SELECT mcap FROM company_equity WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%SomeCompany%' ORDER BY LENGTH(compname) ASC LIMIT 1)`
-    --- END OF CRITICAL COMPANY NAME LOOKUP INSTRUCTIONS ---
-
-    IMPORTANT FOR JOINS:
-    When joining tables, if a column name exists in multiple tables (e.g., 'fincode'),
-    YOU MUST qualify the column name with the table name (e.g., 'company_master.fincode')
-    in the SELECT list and other clauses to avoid ambiguity, as indicated in `columns_context`.
-
-    General overview of all available tables (for context only, `columns_context` is primary for query details):
-    {table_info}
-
-    DETAILED AND ACCURATE SCHEMA FOR RELEVANT TABLES (YOUR PRIMARY GUIDE FOR QUERY CONSTRUCTION):
-    {columns_context}
-
-    Additionally, when necessary, include appropriate JOINS between multiple tables based on their relationships.
-    For price data (e.g., from `bse_adjusted_price_eod`), if the `columns_context` shows a date column, usually the latest available price is required, so order by that date column descending and limit to 1.
-
-    Answer directly without any unncessary extra answers, straight to the point.
+Output MUST be a single, valid JSON object matching the `QueryOutput` schema:
+`{{ "query": "string (The generated SQL query.)" }}`
+Do NOT include any other text, explanations, or markdown. Just the JSON.
 """
+GENERAL_RESPONSE_SYSTEM_PROMPT = "You are IRIS. Respond to the user's question naturally. If the question is a general greeting or unrelated to financial data, provide a polite, general response."
+GENERATE_MULTI_ANSWER_DB_PATH_PROMPT_TEMPLATE = "Given the user's original question and a list of SQL queries executed along with their results, synthesize a single, cohesive, and natural language answer.\nMake sure to address all parts of the user's original question. Be concise and direct.\n\nOriginal Question: {question}\n\nExecuted Queries and Their Results:\n{queries_and_results_formatted_str}\n\nConsolidated Answer:"
+VALIDATE_DB_RESPONSE_PROMPT_TEMPLATE = "You are IRIS. Based on the question and the SQL results, improve the draft answer to be clear, natural, and directly respond to all aspects of the question.\nEnsure a natural, non-generic tone. Do not mention SQL queries or technical details. Be concise.\n\nOriginal Question: {question}\nSQL Results (for context only):\n{sql_results_raw_str}\nDraft Response to Improve: {draft_answer}\n\nRefined Final Answer:"
+NORMALIZE_GENERAL_RESPONSE_PROMPT_TEMPLATE = "You are a helpful assistant Named IRIS. Review the draft answer to the user's non-database question and ensure it's clear, natural, and polite.\n\nQuestion: {question}\nResponse to Improve: {draft_answer}\n\nFinal Answer:"
 
 
-USER_PROMPT_FOR_QUERY = "Question: {input}"
-query_prompt_template = ChatPromptTemplate.from_messages(
-    [("system", WRITE_QUERY_SYSTEM_MESSAGE), ("user", USER_PROMPT_FOR_QUERY)]
-)
+# NEW PROMPT for the new generalization node
+GENERALIZE_TASK_PROMPT_TEMPLATE = """
+You are a query transformation assistant. Your job is to rephrase a specific user request about a company into a generic question about finding the right database schema.
+- REMOVE all specific company names, stock symbols, or personal identifiers.
+- Focus ONLY on the financial or data concept being asked for.
+- The output should be a question phrased to help a vector search find relevant table and column descriptions.
 
-# Prompt for general response when DB is not needed (from your main.py)
-GENERAL_RESPONSE_SYSTEM_PROMPT = """
+Produce a JSON object matching the `GeneralizedQueryOutput` schema: `{{"generalized_question": "string"}}`
+
+--- EXAMPLES ---
+Specific Task: "market cap of Reliance Industries"
+Your Output:
+{{"generalized_question": "which table or columns are needed to calculate a company's market capitalization?"}}
+
+Specific Task: "latest promoter holding for Aegis Logistics"
+Your Output:
+{{"generalized_question": "how to find the latest promoter holding percentage for a company?"}}
+
+Specific Task: "Description of Ambalal Sarabhai"
+Your Output:
+{{"generalized_question": "which table and column contains the business description of a company?"}}
+
+Specific Task: "list all distinct industries"
+Your Output:
+{{"generalized_question": "how to list all distinct industries from the database?"}}
 ---
 
-### 🗃️ Data Available:
-
-You have access to the following categories of data:
-
-#### 🔍 Technical Data:
-- Daily and monthly stock prices (`bse_stock_price`, `bse_adjusted_price_eod`, `monthly_price_bse`, `monthly_price_nse`)
-- Index price data (`bse_index_price`, `bse_indices_price_eod`)
-- Index metadata (`indices_master`, `company_index_part`)
-
-#### 🔍 Upcoming Feature:
-- You can Calculate Technical and Fundamental Indicaters and help to pick better profitable stocks
-
-#### 📊 Fundamental Data:
-- Financial statements: Balance sheet, cash flow, profit/loss (`company_finance_*`)
-- Financial ratios (`company_finance_ratio`, `company_finance_ratio_cons`)
-- Equity structure and changes (`company_equity`, `company_equity_cons`)
-- Results and earnings (`company_results`, `company_results_cons`)
-- Shareholding patterns and detailed shareholders (`company_shareholding_pattern`, `company_shareholders_details`)
-- Company overview (`company_master`, `company_profile`, `company_address`, `company_board_director`)
-- Legal and registrar details (`company_registrar_data`, `company_registrar_master`)
-- Sector and industry info (`industry_master`, `shareholding_category_master`, `stock_exchange_master`, `house_master`)
----
-
-You are IQUN-AI. Respond to the user's question naturally, keeping in mind the data capabilities listed above if relevant.
-If the question is a general greeting or unrelated to financial data, provide a polite, general response.
-"""
-
-# Prompt for generating an answer from SQL results (from your main.py)
-GENERATE_ANSWER_DB_PATH_PROMPT_TEMPLATE = """
-Given the following user question, corresponding SQL query,
-and SQL result, answer the user question.
-
-Question: {question}
-SQL Query: {query}
-SQL Result: {result}
-
-Answer:
-"""
-
-# Prompt for final validation/normalization (for DB path, from your main.py's validate_and_response)
-VALIDATE_DB_RESPONSE_PROMPT_TEMPLATE = """
-You are a helpful assistant Named IQUN-AI. Based on the question and the SQL result provided (context below),
-improve the draft answer to be clear, natural, and directly respond to the question.
-Make your tone natural, not generic.
-Do not mention the SQL query or any internal technical details.
-
-Question: {question}
-SQL Result (for context, not to be exposed): {sql_result}
-Response to Improve: {draft_answer}
-
-Final Answer:
-"""
-
-# Prompt for final normalization (for non-DB path, from your main.py's normalize_response)
-NORMALIZE_GENERAL_RESPONSE_PROMPT_TEMPLATE = """
-You are a helpful assistant Named IQUN-AI.
-The user asked a question that was answered directly without database access.
-Review the draft answer and ensure it's clear, natural, and polite.
-Make your tone natural, not generic.
-
-Question: {question}
-Response to Improve: {draft_answer}
-
-Final Answer:
+Specific Task: {specific_task}
+Your Output:
 """
 
 
-# --- Agent Nodes (adapted from your main.py and previous fundamentals_agent.py) ---
+# --- Agent Nodes (Refactored `get_columns_context_node`) ---
 
 def extract_from_input_node(state: AgentState):
-    """Get Info and Understand Question"""
-    print("---NODE: Extract Info from Input---")
-    prompt_str = EXTRACT_TABLES_PROMPT_TEMPLATE.format(
-        question=state["question"], all_table_info=all_table_info
-    )
-    structured_llm = groq_llm.with_structured_output(ExtractOutput)
+    print("---NODE: Extract Entities & Tasks from Input---")
+    prompt_str = EXTRACT_MULTI_ENTITY_PROMPT_TEMPLATE.format(question=state["question"])
+    structured_llm = groq_llm.with_structured_output(ExtractionOutput, method="json_mode")
     try:
         result = structured_llm.invoke(prompt_str)
-        print(f"Extraction Result: {result}")
+        print(f"Extraction Result: {json.dumps(result, indent=2)}")
         return {"extract": result}
     except Exception as e:
-        print(f"Error in extract_from_input_node: {e}")
-        return {"extract": {"is_required_database": False, "tables_required": []}} # Fallback
+        print(f"Error in extract_from_input_node: {e}. Defaulting to non-DB path.")
+        return {"extract": {"is_required_database": False, "entities_info": [], "entity_task_description": {}}}
 
 def general_response_node(state: AgentState):
-    """Give Questions of answer where no need to database context"""
     print("---NODE: General Response---")
-    # This node now directly generates the 'answer' field which will be passed to normalize_general_response_node
-    messages = [
-        SystemMessage(content=GENERAL_RESPONSE_SYSTEM_PROMPT), # all_table_info is part of this system prompt
-        HumanMessage(content=state["question"])
-    ]
-    try:
-        response_content = groq_llm.invoke(messages).content
-        print(f"General Response (Draft): {response_content}")
-        return {"answer": response_content} # This is the draft answer
-    except Exception as e:
-        print(f"Error in general_response_node: {e}")
-        return {"answer": "I'm sorry, I encountered an issue trying to process your request."}
-
-def get_columns_context_node(state: AgentState):
-    """Fetches detailed column information for the required tables."""
-    print("---NODE: Get Columns Context---")
-    required_tables = state["extract"].get("tables_required", [])
-    if not required_tables:
-        print("No tables required, providing generic column context.")
-        return {"columns_context": "No specific tables were identified as necessary for this query."}
-    try:
-        # Assuming get_column_info.invoke returns a string representation of the schema
-        context_str = get_column_info.invoke({"table_names": required_tables})
-        print(f"Successfully invoked get_column_info for: {required_tables}")
-        print(f"--- DETAILED COLUMNS CONTEXT BEING PASSED TO QUERY WRITER (Length: {len(context_str)}) ---")
-        print(context_str) # PRINT THE ACTUAL CONTEXT STRING
-        print(f"--- END DETAILED COLUMNS CONTEXT ---")
-        if not context_str or context_str.strip() == "":
-            print("WARNING: get_column_info returned empty context despite tables being required.")
-            return {"columns_context": f"Empty schema context returned for {required_tables}. Query construction will be impaired."}
-        return {"columns_context": context_str}
-    except Exception as e:
-        print(f"Error in get_columns_context_node: {e}")
-        return {"columns_context": f"Error fetching column details: {e}. Using general table info."}
-
-def write_query_node(state: AgentState):
-    """Generate SQL query to fetch information."""
-    print("---NODE: Write SQL Query---")
-    prompt = query_prompt_template.invoke(
-        {
-            "dialect": db.dialect, # Added dialect here
-            "columns_context": state["columns_context"],
-            "top_k": 10,
-            "table_info": all_table_info, # General overview
-            "input": state["question"],
-        }
-    )
-    # print(f"Query Prompt: {prompt}") # For debugging the full prompt
-    structured_llm = groq_llm.with_structured_output(QueryOutput)
-    try:
-        result = structured_llm.invoke(prompt)
-        print(f"Generated SQL Query: {result['query']}")
-        return {"query": result["query"]}
-    except Exception as e:
-        print(f"Error in write_query_node: {e}")
-        return {"query": "SELECT 'Error generating query due to LLM failure.'"}
+    messages = [SystemMessage(content=GENERAL_RESPONSE_SYSTEM_PROMPT), HumanMessage(content=state["question"])]
+    response_content = groq_llm.invoke(messages).content
+    return {"answer": response_content}
 
 
-def execute_query_node(state: AgentState):
-    """Execute SQL query."""
-    print("---NODE: Execute SQL Query---")
-    query_to_execute = state["query"]
-    if not query_to_execute or "Error generating query" in query_to_execute:
-        print(f"Skipping execution for invalid query: {query_to_execute}")
-        return {"result": "Error: Invalid or no SQL query provided for execution."}
+def generalize_tasks_for_rag_node(state: AgentState):
+    print("---NODE: Generalize Tasks for RAG---")
+    tasks_to_run = state["extract"].get("entity_task_description", {})
+    generalized_tasks = {}
     
-    execute_query_tool = QuerySQLDatabaseTool(db=db)
-    try:
-        result = execute_query_tool.invoke(query_to_execute)
-        print(f"SQL Execution Result (Snippet): {str(result)[:200]}...")
-        return {"result": str(result)}
-    except Exception as e:
-        print(f"Error executing SQL query '{query_to_execute}': {e}")
-        return {"result": f"Error executing query: {e}. Query was: {query_to_execute}"}
+    generalizer_llm = groq_llm.with_structured_output(GeneralizedQueryOutput, method="json_mode")
 
+    for entity_name, specific_task in tasks_to_run.items():
+        try:
+            prompt_str = GENERALIZE_TASK_PROMPT_TEMPLATE.format(specific_task=specific_task)
+            response = generalizer_llm.invoke(prompt_str)
+            gen_q = response.get("generalized_question", "")
+            if gen_q:
+                generalized_tasks[entity_name] = gen_q
+                print(f"Original: '{specific_task}'  ==>  Generalized: '{gen_q}'")
+            else:
+                # Fallback to the original if generalization fails
+                generalized_tasks[entity_name] = specific_task
+                print(f"Warning: Could not generalize task for '{entity_name}', using original.")
+
+        except Exception as e:
+            print(f"Error generalizing task for '{entity_name}': {e}. Using original task.")
+            generalized_tasks[entity_name] = specific_task
+            
+    return {"generalized_tasks": generalized_tasks}
+
+# --- THIS IS THE REFACTORED RAG INTEGRATION NODE ---
+# --- THIS NODE IS NOW UPDATED to use the generalized tasks ---
+def get_columns_context_node(state: AgentState):
+    print("---NODE: Get Columns Context (RAG-Powered)---")
+    # It now uses the output from the new generalization node
+    generalized_tasks = state.get("generalized_tasks", {})
+    if not generalized_tasks:
+        return {"columns_context": "No tasks were identified or generalized for the RAG."}
+
+    all_contexts = set()
+    for task_description in generalized_tasks.values():
+        # The query to the RAG is now the clean, generic question
+        context_for_task = get_rag_based_context(task_description)
+        if context_for_task and "Error" not in context_for_task:
+            all_contexts.add(context_for_task)
+
+    if not all_contexts:
+        final_context = "RAG provider could not find relevant table context for the tasks."
+    else:
+        final_context = "\n\n".join(sorted(list(all_contexts))) # sorted for deterministic output
+    
+    print("\n---COMBINED CONTEXT FOR SQL WRITER---")
+    print(final_context)
+    print("-------------------------------------\n")
+    
+    return {"columns_context": final_context}
+
+def write_queries_node(state: AgentState):
+    print("---NODE: Write SQL Queries (Multi-Task)---")
+    # ... (code is unchanged)
+    extract_output = state["extract"]
+    columns_context = state["columns_context"]
+    original_question = state["question"]
+    queries_meta_list = []
+    
+    # IMPORTANT: We still iterate over the ORIGINAL tasks for the query writer prompt
+    # The `columns_context` is now just richer.
+    tasks_to_run = extract_output.get("entity_task_description", {})
+    # ... rest of the function is unchanged
+    def _generate_one_query(task_desc: str, entity_name_for_query: str):
+        prompt_obj = ChatPromptTemplate.from_messages([("system", WRITE_QUERY_SYSTEM_MESSAGE)]).invoke({
+            "dialect": db.dialect, "original_question": original_question, "current_task_description": task_desc,
+            "current_entity_name": entity_name_for_query, "columns_context": columns_context,
+        })
+        try:
+            query_writer_llm = groq_llm.with_structured_output(QueryOutput, method="json_mode")
+            query_output = query_writer_llm.invoke(prompt_obj)
+            sql_query = query_output.get("query")
+            if sql_query and isinstance(sql_query, str): return sql_query.strip(), False
+            return f"LLM failed to provide valid SQL for task: {task_desc}", True
+        except Exception as e: return f"LLM invocation failed for task '{task_desc}': {e}", True
+    if not tasks_to_run:
+        print("Warning: No tasks identified to generate queries for.")
+        return {"queries_meta": []}
+    for entity_or_general, task_description in tasks_to_run.items():
+        query_str, is_err = _generate_one_query(task_description, entity_or_general)
+        if not is_err: print(f"Generated SQL for task '{task_description}': {query_str}")
+        else: print(f"Failed to generate SQL for task '{task_description}': {query_str}")
+        queries_meta_list.append({"query_string": query_str, "entity_name": entity_or_general, "is_error_placeholder": is_err})
+    return {"queries_meta": queries_meta_list}
+
+def execute_queries_node(state: AgentState):
+    print("---NODE: Execute SQL Queries---")
+    # ... (code is unchanged)
+    queries_meta_list = state.get("queries_meta", [])
+    execution_results = []
+    if not queries_meta_list: return {"results": ["No queries were provided for execution."]}
+    execute_query_tool = QuerySQLDatabaseTool(db=db)
+    for item_meta in queries_meta_list:
+        query_to_run = item_meta["query_string"]
+        if item_meta["is_error_placeholder"]:
+            execution_results.append(query_to_run)
+            continue
+        try:
+            db_result = execute_query_tool.invoke(query_to_run)
+            execution_results.append(str(db_result))
+        except Exception as e:
+            error_msg = f"Error executing query for {item_meta['entity_name']}: {e}"
+            execution_results.append(error_msg)
+    return {"results": execution_results}
 
 def generate_answer_db_path_node(state: AgentState):
-    """Answer question using retrieved information as context (DB path)."""
     print("---NODE: Generate Answer (DB Path)---")
-    if "Error executing query" in state["result"] or "Error: Invalid or no SQL query" in state["result"]:
-        # Formulate a user-friendly message if SQL execution failed
-        error_message = f"I'm IQUN-AI. I tried to find the information for '{state['question']}', but encountered a problem accessing the data. "
-        error_message += "This might be due to an issue with the data source or the way the information was requested. Please try rephrasing or ask again later."
-        print(f"DB Path Error Message: {error_message}")
-        return {"answer": error_message} # This draft error answer goes to validate_db_response_node
+    queries_meta = state.get("queries_meta", [])
+    results = state.get("results", [])
+    
+    if not results or not queries_meta:
+        return {"answer": "I'm sorry, I couldn't process your request as no results were generated."}
 
-    prompt_str = GENERATE_ANSWER_DB_PATH_PROMPT_TEMPLATE.format(
-        question=state["question"], query=state["query"], result=state["result"]
+    q_and_r_formatted_list = []
+    for i, res_str in enumerate(results):
+        if i < len(queries_meta):
+            entity_name = queries_meta[i]['entity_name']
+            q_and_r_formatted_list.append(f"--- For: {entity_name} ---\nResult: {res_str}\n---")
+    
+    prompt_str = GENERATE_MULTI_ANSWER_DB_PATH_PROMPT_TEMPLATE.format(
+        question=state["question"], 
+        queries_and_results_formatted_str="\n\n".join(q_and_r_formatted_list)
     )
-    try:
-        response_content = groq_llm.invoke(prompt_str).content
-        print(f"Generated Answer (DB Path - Draft): {response_content}")
-        return {"answer": response_content} # This is the draft answer
-    except Exception as e:
-        print(f"Error in generate_answer_db_path_node: {e}")
-        return {"answer": "I'm IQUN-AI. I retrieved some data but had trouble putting together an answer. Could you try rephrasing?"}
-
+    response_content = groq_llm.invoke(prompt_str).content
+    return {"answer": response_content}
 
 def validate_db_response_node(state: AgentState):
-    """Final response generation for DB path."""
     print("---NODE: Validate DB Response---")
     prompt_str = VALIDATE_DB_RESPONSE_PROMPT_TEMPLATE.format(
         question=state["question"],
-        sql_result=state["result"], # provide SQL result for context during refinement
-        draft_answer=state["answer"]
+        sql_results_raw_str="\n".join(state.get("results", [])),
+        draft_answer=state.get("answer", "")
     )
-    try:
-        response_content = groq_llm.invoke(prompt_str).content
-        print(f"Final Validated Answer (DB Path): {response_content}")
-        return {"final_answer": response_content}
-    except Exception as e:
-        print(f"Error in validate_db_response_node: {e}")
-        return {"final_answer": state.get("answer", "An unexpected error occurred while finalizing the answer.")} # Fallback to draft
-
+    response_content = groq_llm.invoke(prompt_str).content
+    return {"final_answer": response_content}
 
 def normalize_general_response_node(state: AgentState):
-    """Final response generation for non-DB path."""
     print("---NODE: Normalize General Response---")
     prompt_str = NORMALIZE_GENERAL_RESPONSE_PROMPT_TEMPLATE.format(
         question=state["question"],
-        draft_answer=state["answer"]
+        draft_answer=state.get("answer", "")
     )
-    try:
-        response_content = groq_llm.invoke(prompt_str).content
-        print(f"Final Normalized Answer (General Path): {response_content}")
-        return {"final_answer": response_content}
-    except Exception as e:
-        print(f"Error in normalize_general_response_node: {e}")
-        return {"final_answer": state.get("answer", "An unexpected error occurred.")} # Fallback to draft
+    response_content = groq_llm.invoke(prompt_str).content
+    return {"final_answer": response_content}
 
-# --- Graph Conditional Edges ---
+
+# --- Graph Definition (Workflow Preserved) ---
 def question_router(state: AgentState):
-    """Routes based on whether a DB query is needed."""
-    print(f"---ROUTER: DB Query Needed? --- Extract: {state['extract']}")
-    if state["extract"].get("is_required_database") and state["extract"].get("tables_required"):
-        print("Routing to: Get Columns Context (DB Path)")
+    print("---ROUTER: DB or General?---")
+    extract_output = state["extract"]
+    if extract_output.get("is_required_database"):
+        print("Routing to: DB Path")
         return "database_path"
     else:
-        print("Routing to: General Response (Non-DB Path)")
+        print("Routing to: General Path")
         return "general_path"
 
-# --- Build the Graph ---
 graph_builder = StateGraph(AgentState)
-
-# Add nodes (using more descriptive names from your working main.py style)
 graph_builder.add_node("extract_from_query", extract_from_input_node)
+graph_builder.add_node("generalize_tasks_for_rag", generalize_tasks_for_rag_node) # New node
 graph_builder.add_node("db_columns_context", get_columns_context_node)
-graph_builder.add_node("general_response_draft", general_response_node) # Draft generation
-graph_builder.add_node("write_sql_query", write_query_node)
-graph_builder.add_node("execute_sql_query", execute_query_node)
-graph_builder.add_node("generate_db_answer_draft", generate_answer_db_path_node) # Draft generation
-graph_builder.add_node("validate_db_final_response", validate_db_response_node) # Final for DB
-graph_builder.add_node("normalize_general_final_response", normalize_general_response_node) # Final for general
+graph_builder.add_node("general_response_draft", general_response_node)
+graph_builder.add_node("write_sql_queries", write_queries_node)
+graph_builder.add_node("execute_sql_queries", execute_queries_node)
+graph_builder.add_node("generate_db_answer_draft", generate_answer_db_path_node)
+graph_builder.add_node("validate_db_final_response", validate_db_response_node)
+graph_builder.add_node("normalize_general_final_response", normalize_general_response_node)
 
-# Set entry point
+# Define the graph's edges and control flow
 graph_builder.add_edge(START, "extract_from_query")
-
-# Conditional routing after extraction
 graph_builder.add_conditional_edges(
     "extract_from_query",
     question_router,
     {
-        "database_path": "db_columns_context",
+        # The database path now goes to our NEW generalization node first
+        "database_path": "generalize_tasks_for_rag", 
         "general_path": "general_response_draft"
     }
 )
 
-# DB Path
-graph_builder.add_edge("db_columns_context", "write_sql_query")
-graph_builder.add_edge("write_sql_query", "execute_sql_query")
-graph_builder.add_edge("execute_sql_query", "generate_db_answer_draft")
+# This is the new flow: generalize -> get context -> write query
+graph_builder.add_edge("generalize_tasks_for_rag", "db_columns_context")
+graph_builder.add_edge("db_columns_context", "write_sql_queries")
+graph_builder.add_edge("write_sql_queries", "execute_sql_queries")
+#... rest of the db path
+graph_builder.add_edge("execute_sql_queries", "generate_db_answer_draft")
 graph_builder.add_edge("generate_db_answer_draft", "validate_db_final_response")
 graph_builder.add_edge("validate_db_final_response", END)
 
-# General Path
+# The general path remains the same
 graph_builder.add_edge("general_response_draft", "normalize_general_final_response")
 graph_builder.add_edge("normalize_general_final_response", END)
 
-# Compile the graph
 app = graph_builder.compile()
 
-
-# --- Main Execution for Testing (if this file is run directly) ---
+# --- Main Execution for Testing ---
 if __name__ == "__main__":
-    print("Fundamentals Agent Graph (Refactored) Compiled. Ready for testing.")
-
-    # test_queries = [
-    #     "Hello there, IQUN-AI!",
-    #     "what is scripcode for reliance industries?",
-    #     "What is the market cap of TCS?", # Assuming TCS is in your DB
-    #     "Tell me about your capabilities.",
-    #     "List all distinct industries from company_master.", # More specific
-    #      "what is the latest PAT for fincode 3?" # uses fincode
-    # ]
-
-    # for q_text in test_queries:
-    #     print(f"\n\n--- TESTING QUESTION: {q_text} ---")
-    #     inputs = {"question": q_text}
-    #     try:
-    #         # Stream events to see the flow
-    #         for event in app.stream(inputs, stream_mode="values"):
-    #             # event is the full state dict at each step
-    #             print(f"\nState after step {event.get('__end__', list(event.keys())[-1])}:") # Try to get last key if no __end__
-    #             # For brevity, print only relevant parts or new/changed parts
-    #             if "final_answer" in event and event["final_answer"]:
-    #                 print(f"  FINAL ANSWER: {event['final_answer']}")
-    #             elif "answer" in event and event["answer"]:
-    #                  print(f"  Draft Answer: {event['answer'][:200]}...")
-    #             elif "query" in event and event["query"]:
-    #                 print(f"  Generated Query: {event['query']}")
-    #             elif "result" in event and event["result"]:
-    #                 print(f"  Query Result: {str(event['result'])[:200]}...")
-    #             elif "extract" in event and event["extract"]:
-    #                 print(f"  Extraction: {event['extract']}")
-
-
-            # Get the final accumulated state if needed (though streaming shows intermediate states)
-            # final_state_result = app.invoke(inputs)
-            # print(f"\n--- FINAL ACCUMULATED STATE for '{q_text}' ---")
-            # print(final_state_result.get("final_answer", "No final answer in accumulated state."))
-    
-    user_input = input("Enter your queries: ")
-    input = {"question": user_input}
-
-    for event in app.stream(input, stream_mode="values"):
-        # event is the full state dict at each step
-            print(f"\nState after step {event.get('__end__', list(event.keys())[-1])}:") # Try to get last key if no __end__
-            # For brevity, print only relevant parts or new/changed parts
-            if "final_answer" in event and event["final_answer"]:
-                print(f"  FINAL ANSWER: {event['final_answer']}")
-            # elif "answer" in event and event["answer"]:
-            #         print(f"  Draft Answer: {event['answer'][:200]}...")
-            # elif "query" in event and event["query"]:
-            #     print(f"  Generated Query: {event['query']}")
-            # elif "result" in event and event["result"]:
-            #     print(f"  Query Result: {str(event['result'])[:200]}...")
-            # elif "extract" in event and event["extract"]:
-            #     print(f"  Extraction: {event['extract']}")
-            
-
-        # except Exception as e:
-        #     print(f"Error invoking graph for question '{q_text}': {e}")
-        #     import traceback
-        #     traceback.print_exc()
-        # print("---------------------------------------\n")
-
-    try:
-        print("\nAttempting to generate graph visualization...")
-        img_data = app.get_graph().draw_mermaid_png()
-        with open("fundamentals_agent_refactored_graph.png", "wb") as f:
-            f.write(img_data)
-        print("Graph saved to fundamentals_agent_refactored_graph.png")
-        # display(Image(img_data)) # Uncomment if in a Jupyter environment
-    except Exception as e:
-        print(f"Could not generate graph visualization: {e}. Ensure graphviz/pygraphviz are installed.")
+    print("Fundamentals Agent Graph (Lean RAG Integration) Compiled.")
+    # The same test queries as before
+    test_queries = [
+        "Hello there",
+        "List all distinct industries",
+        "What is the market cap of Reliance Industries?",
+        "What is the market cap of Reliance Industries and Aegis Logistics",
+        "What are the top 5 companies by market cap?",
+        "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
+        "Description of Ambalal Sarabhai"
+        
+    ]
+    for q_text in test_queries:
+        print(f"\n\n--- TESTING FUNDAMENTALS QUESTION: {q_text} ---\n")
+        inputs = {"question": q_text}
+        try:
+            for event_map in app.stream(inputs, stream_mode="values", config={"recursion_limit": 25}):
+                if "final_answer" in event_map and event_map.get("final_answer"):
+                    print(f"\nFINAL ANSWER: {event_map['final_answer']}")
+        except Exception as e:
+            print(f"Error invoking graph for question '{q_text}': {e}")
+            import traceback
+            traceback.print_exc()
+        print("\n---------------------------------------\n")

@@ -1,0 +1,2084 @@
+### Table: `company_master`
+
+- **fincode** (`table_name - company_master: <class 'int'>`): AFPL's Company Code
+- **scripcode** (`table_name - company_master: typing.Optional[int]`): BSE Scrip Code
+- **scrip_name** (`table_name - company_master: typing.Optional[str]`): BSE Script Name
+- **scrip_group** (`table_name - company_master: typing.Optional[str]`): BSE Scrip Group
+- **compname** (`table_name - company_master: typing.Optional[str]`): Company Long Name
+- **ind_code** (`table_name - company_master: typing.Optional[int]`): AFPL's sector / Industry Code
+- **industry** (`table_name - company_master: typing.Optional[str]`): Industry name
+- **hse_code** (`table_name - company_master: typing.Optional[int]`): AFPL's Business House Code
+- **house** (`table_name - company_master: typing.Optional[str]`): HOUSE
+- **symbol** (`table_name - company_master: typing.Optional[str]`): NSE Script Code
+- **series** (`table_name - company_master: typing.Optional[str]`): NSE Scrip Series
+- **isin** (`table_name - company_master: typing.Optional[str]`): ISIN Number
+- **s_name** (`table_name - company_master: typing.Optional[str]`): Company Short Name
+- **rformat** (`table_name - company_master: typing.Optional[str]`): Result Format
+- **fformat** (`table_name - company_master: typing.Optional[str]`): Finance Format
+- **chairman** (`table_name - company_master: typing.Optional[str]`): Chairman
+- **mdir** (`table_name - company_master: typing.Optional[str]`): Managing Director
+- **cosec** (`table_name - company_master: typing.Optional[str]`): Company Secretary
+- **inc_month** (`table_name - company_master: typing.Optional[str]`): Incorporation Month
+- **inc_year** (`table_name - company_master: typing.Optional[str]`): Incorporated Year
+- **fv** (`table_name - company_master: typing.Optional[float]`): Face Value
+- **status** (`table_name - company_master: typing.Optional[str]`): Active, Delisted, Amalgamation, Merged, InActive, Preference, ETF, NonEquity, MutualFund, Index, EQ-R, Bonds. ( Active means Equity Stocks)
+- **sublisting** (`table_name - company_master: typing.Optional[str]`): Sublisting
+- **bse_scrip_id** (`table_name - company_master: typing.Optional[str]`): BSE ScripID
+- **securitytoken** (`table_name - company_master: typing.Optional[int]`): NSE Security Token
+- **cin** (`table_name - company_master: typing.Optional[str]`): CIN
+- **bse_sublisting** (`table_name - company_master: typing.Optional[str]`): BSE Sublisting
+- **nse_sublisting** (`table_name - company_master: typing.Optional[str]`): NSE Sublisting
+- **flag** (`table_name - company_master: typing.Optional[str]`): Updation Flag
+
+### Table: `industry_master`
+
+- **ind_code** (`table_name - industry_master: <class 'int'>`): AccordFintech’s Industry Code
+- **industry** (`table_name - industry_master: <class 'str'>`): Industry Name
+- **ind_shortname** (`table_name - industry_master: <class 'str'>`): Industry Short Name
+- **sector** (`table_name - industry_master: <class 'str'>`): Sector
+- **sector_code** (`table_name - industry_master: <class 'int'>`): Sector Code
+- **flag** (`table_name - industry_master: typing.Optional[str]`): Updation Flag
+
+### Table: `company_address`
+
+- **fincode** (`table_name - company_address: <class 'int'>`): AccordFintech’s Company Code
+- **add1** (`table_name - company_address: typing.Optional[str]`): Company Registered Address 1
+- **add2** (`table_name - company_address: typing.Optional[str]`): Company Registered Address 2
+- **add3** (`table_name - company_address: typing.Optional[str]`): Company Registered Address 3
+- **city_name** (`table_name - company_address: typing.Optional[str]`): City
+- **pincode** (`table_name - company_address: typing.Optional[str]`): PIN code
+- **state_name** (`table_name - company_address: typing.Optional[str]`): State
+- **phone** (`table_name - company_address: typing.Optional[str]`): Telephone Numbers
+- **fax_no** (`table_name - company_address: typing.Optional[str]`): Fax Number
+- **website** (`table_name - company_address: typing.Optional[str]`): Website
+- **e_mail** (`table_name - company_address: typing.Optional[str]`): Email Address
+- **flag** (`table_name - company_address: typing.Optional[str]`): Updation Flag
+
+### Table: `house_master`
+
+- **house_code** (`table_name - house_master: <class 'int'>`): AccordFintech’s Business House Code
+- **house** (`table_name - house_master: <class 'str'>`): House Name
+- **flag** (`table_name - house_master: typing.Optional[str]`): Updation Flag
+
+### Table: `stock_exchange_master`
+
+- **stk_id** (`table_name - stock_exchange_master: <class 'int'>`): No description
+- **stk_name** (`table_name - stock_exchange_master: <class 'str'>`): No description
+- **flag** (`table_name - stock_exchange_master: typing.Optional[str]`): No description
+
+### Table: `company_listings`
+
+- **fincode** (`table_name - company_listings: <class 'int'>`): No description
+- **stk_id** (`table_name - company_listings: <class 'int'>`): No description
+- **flag** (`table_name - company_listings: typing.Optional[str]`): No description
+
+### Table: `shareholding_category_master`
+
+- **shp_catid** (`table_name - shareholding_category_master: <class 'int'>`): Shareholders Category ID
+- **shp_catname** (`table_name - shareholding_category_master: typing.Optional[str]`): Shareholders Category Name
+- **sub_category** (`table_name - shareholding_category_master: typing.Optional[str]`): Shareholders Sub Category Name
+- **flag** (`table_name - shareholding_category_master: typing.Optional[str]`): Updation Flag
+
+### Table: `company_shareholders_details`
+
+- **fincode** (`table_name - company_shareholders_details: <class 'int'>`): Company Code
+- **date_end** (`table_name - company_shareholders_details: <class 'int'>`): Date End (Year/Quarter/Month End)
+- **srno** (`table_name - company_shareholders_details: <class 'int'>`): Serial Number
+- **shp_catid** (`table_name - company_shareholders_details: typing.Optional[int]`): Shareholders Category ID
+- **name** (`table_name - company_shareholders_details: typing.Optional[str]`): Name
+- **percentage** (`table_name - company_shareholders_details: typing.Optional[float]`): Shareholding Percentage
+- **no_of_shares** (`table_name - company_shareholders_details: typing.Optional[float]`): Number of Shares
+- **pledge_encumbered_no_of_shares** (`table_name - company_shareholders_details: typing.Optional[float]`): Pledged / Encumbered Number of Shares
+- **pledge_encumbered_percentage** (`table_name - company_shareholders_details: typing.Optional[float]`): Pledged / Encumbered Percentage
+- **flag** (`table_name - company_shareholders_details: typing.Optional[str]`): Updation Flag
+
+### Table: `company_registrar_master`
+
+- **registrar_no** (`table_name - company_registrar_master: <class 'int'>`): Registrar Master Code
+- **registrar_name** (`table_name - company_registrar_master: typing.Optional[str]`): Registrar Name
+- **reg_address** (`table_name - company_registrar_master: typing.Optional[str]`): Address 1
+- **registrar_address1** (`table_name - company_registrar_master: typing.Optional[str]`): Address 2
+- **registrar_address2** (`table_name - company_registrar_master: typing.Optional[str]`): Address 3
+- **registrar_address3** (`table_name - company_registrar_master: typing.Optional[str]`): Address 4
+- **registrar_phone** (`table_name - company_registrar_master: typing.Optional[str]`): Telephone Number
+- **registrar_fax** (`table_name - company_registrar_master: typing.Optional[str]`): Fax Number
+- **registrar_email** (`table_name - company_registrar_master: typing.Optional[str]`): Email ID
+- **registrar_website** (`table_name - company_registrar_master: typing.Optional[str]`): Website URL
+- **flag** (`table_name - company_registrar_master: typing.Optional[str]`): Updation Flag
+
+### Table: `company_registrar_data`
+
+- **fincode** (`table_name - company_registrar_data: <class 'int'>`): AccordFintech’s Company Code
+- **registrar_no** (`table_name - company_registrar_data: <class 'int'>`): Registrar Number (references registrar_master)
+- **flag** (`table_name - company_registrar_data: typing.Optional[str]`): Updation Flag
+
+### Table: `company_board_director`
+
+- **fincode** (`table_name - company_board_director: <class 'int'>`): AccordFintech’s Company Code
+- **yrc** (`table_name - company_board_director: <class 'int'>`): Financial Year End
+- **serialno** (`table_name - company_board_director: <class 'int'>`): Sequential Serial Number of the entry
+- **dirtype_id** (`table_name - company_board_director: <class 'int'>`): Designation ID
+- **srno** (`table_name - company_board_director: typing.Optional[int]`): Serial Number in which the data should be displayed
+- **effect_date** (`table_name - company_board_director: typing.Optional[datetime.datetime]`): Effective Date
+- **dirname** (`table_name - company_board_director: typing.Optional[str]`): Director’s Name
+- **dirrem** (`table_name - company_board_director: typing.Optional[float]`): Director's Remuneration
+- **reported_dsg** (`table_name - company_board_director: typing.Optional[str]`): Reported Designation
+- **rem_unit** (`table_name - company_board_director: typing.Optional[float]`): Remuneration Units
+- **independent** (`table_name - company_board_director: typing.Optional[str]`): Independent Director Indicator
+- **director_id** (`table_name - company_board_director: typing.Optional[int]`): Director Name Code
+- **flag** (`table_name - company_board_director: typing.Optional[str]`): Updation Flag
+
+### Table: `monthly_price_bse`
+
+- **fincode** (`table_name - monthly_price_bse: <class 'int'>`): AFPL’s Company Code
+- **scripcode** (`table_name - monthly_price_bse: typing.Optional[int]`): BSE Scrip Code
+- **month** (`table_name - monthly_price_bse: <class 'int'>`): Month in digit (1-12)
+- **year** (`table_name - monthly_price_bse: <class 'int'>`): Year
+- **open** (`table_name - monthly_price_bse: typing.Optional[float]`): Open price of the month
+- **high** (`table_name - monthly_price_bse: typing.Optional[float]`): High price of the month
+- **low** (`table_name - monthly_price_bse: typing.Optional[float]`): Low price of the month
+- **close** (`table_name - monthly_price_bse: typing.Optional[float]`): Close price of the month
+- **volume** (`table_name - monthly_price_bse: typing.Optional[int]`): Total Volume for the month
+- **value** (`table_name - monthly_price_bse: typing.Optional[float]`): Total Value for the month
+- **flag** (`table_name - monthly_price_bse: typing.Optional[str]`): Updation Flag
+
+### Table: `monthly_price_nse`
+
+- **fincode** (`table_name - monthly_price_nse: <class 'int'>`): AFPL’s Company Code
+- **symbol** (`table_name - monthly_price_nse: typing.Optional[str]`): NSE Script Code
+- **month** (`table_name - monthly_price_nse: <class 'int'>`): Month in digit (1-12)
+- **year** (`table_name - monthly_price_nse: <class 'int'>`): Year
+- **open** (`table_name - monthly_price_nse: typing.Optional[float]`): Open price of the month
+- **high** (`table_name - monthly_price_nse: typing.Optional[float]`): High price of the month
+- **low** (`table_name - monthly_price_nse: typing.Optional[float]`): Low price of the month
+- **close** (`table_name - monthly_price_nse: typing.Optional[float]`): Close price of the month
+- **volume** (`table_name - monthly_price_nse: typing.Optional[int]`): Total Volume for the month
+- **value** (`table_name - monthly_price_nse: typing.Optional[float]`): Total Value for the month
+- **flag** (`table_name - monthly_price_nse: typing.Optional[str]`): Updation Flag
+
+### Table: `company_equity_cons`
+
+- **fincode** (`table_name - company_equity_cons: <class 'int'>`): Fincode
+- **year_end** (`table_name - company_equity_cons: typing.Optional[int]`): Year end
+- **no_shs_subscribed** (`table_name - company_equity_cons: typing.Optional[int]`): No of shares subscribed
+- **latest_equity** (`table_name - company_equity_cons: typing.Optional[float]`): Latest Equity
+- **latest_reserve** (`table_name - company_equity_cons: typing.Optional[float]`): Latest Reserve
+- **price** (`table_name - company_equity_cons: typing.Optional[float]`): Price
+- **mcap** (`table_name - company_equity_cons: typing.Optional[float]`): Market Capitalization
+- **dividend_yield** (`table_name - company_equity_cons: typing.Optional[float]`): Dividend yield\_
+- **fv** (`table_name - company_equity_cons: typing.Optional[float]`): Face Value
+- **booknavpershare** (`table_name - company_equity_cons: typing.Optional[float]`): Book Value per Share
+- **ttm_yearend** (`table_name - company_equity_cons: typing.Optional[int]`): TTM Year End
+- **ttmeps** (`table_name - company_equity_cons: typing.Optional[float]`): TTM EPS
+- **ttmpe** (`table_name - company_equity_cons: typing.Optional[float]`): TTM PE
+- **price_sales** (`table_name - company_equity_cons: typing.Optional[float]`): Price to Sales
+- **ev_sales** (`table_name - company_equity_cons: typing.Optional[float]`): EV to Sales
+- **mcap_sales** (`table_name - company_equity_cons: typing.Optional[float]`): Mcap to Sales
+- **ev** (`table_name - company_equity_cons: typing.Optional[float]`): Enterprise Value
+- **price_bv** (`table_name - company_equity_cons: typing.Optional[float]`): Price to Book Value
+- **ev_ebitda** (`table_name - company_equity_cons: typing.Optional[float]`): EV to EBITDA
+- **ttmceps** (`table_name - company_equity_cons: typing.Optional[float]`): TTM CEPS
+- **price_ceps** (`table_name - company_equity_cons: typing.Optional[float]`): Price to CEPS
+- **price_date** (`table_name - company_equity_cons: typing.Optional[datetime.datetime]`): Price Date
+- **stk_exchange** (`table_name - company_equity_cons: typing.Optional[str]`): Stock Exchange
+- **flag** (`table_name - company_equity_cons: typing.Optional[str]`): Updation Flag
+
+### Table: `company_equity`
+
+- **fincode** (`table_name - company_equity: <class 'int'>`): Fincode
+- **year_end** (`table_name - company_equity: typing.Optional[int]`): Year end
+- **no_shs_subscribed** (`table_name - company_equity: typing.Optional[int]`): No of shares subscribed
+- **latest_equity** (`table_name - company_equity: typing.Optional[float]`): Latest Equity
+- **latest_reserve** (`table_name - company_equity: typing.Optional[float]`): Latest Reserve
+- **price** (`table_name - company_equity: typing.Optional[float]`): Price
+- **mcap** (`table_name - company_equity: typing.Optional[float]`): Market Capitalization
+- **dividend_yield** (`table_name - company_equity: typing.Optional[float]`): Dividend yield\_
+- **fv** (`table_name - company_equity: typing.Optional[float]`): Face Value
+- **booknavpershare** (`table_name - company_equity: typing.Optional[float]`): Book Value per Share
+- **ttm_yearend** (`table_name - company_equity: typing.Optional[int]`): TTM Year End
+- **ttmeps** (`table_name - company_equity: typing.Optional[float]`): TTM EPS
+- **ttmpe** (`table_name - company_equity: typing.Optional[float]`): TTM PE
+- **price_sales** (`table_name - company_equity: typing.Optional[float]`): Price to Sales
+- **ev_sales** (`table_name - company_equity: typing.Optional[float]`): EV to Sales
+- **mcap_sales** (`table_name - company_equity: typing.Optional[float]`): Mcap to Sales
+- **ev** (`table_name - company_equity: typing.Optional[float]`): Enterprise Value
+- **price_bv** (`table_name - company_equity: typing.Optional[float]`): Price to Book Value
+- **ev_ebitda** (`table_name - company_equity: typing.Optional[float]`): EV to EBITDA
+- **ttmceps** (`table_name - company_equity: typing.Optional[float]`): TTM CEPS
+- **price_ceps** (`table_name - company_equity: typing.Optional[float]`): Price to CEPS
+- **price_date** (`table_name - company_equity: typing.Optional[datetime.datetime]`): Price Date
+- **stk_exchange** (`table_name - company_equity: typing.Optional[str]`): Stock Exchange
+- **flag** (`table_name - company_equity: typing.Optional[str]`): Updation Flag
+
+### Table: `company_finance_balancesheet`
+
+- **fincode** (`table_name - company_finance_balancesheet: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_balancesheet: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_balancesheet: <class 'str'>`): Balance Sheet Type: S=Standalone, C=Consolidated
+- **no_months** (`table_name - company_finance_balancesheet: typing.Optional[int]`): Number of months the balance sheet covers
+- **unit** (`table_name - company_finance_balancesheet: typing.Optional[int]`): Unit of figures
+- **share_capital** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Share Capital
+- **shares_warrants** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Share Warrants
+- **shares_application_money** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Share Application Money
+- **esop_outstanding** (`table_name - company_finance_balancesheet: typing.Optional[float]`): ESOP Outstanding
+- **share_suspense** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Share Capital Suspense Account
+- **reserve** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Reserves
+- **shareholders_funds** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Shareholder's Funds
+- **deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Deposits
+- **borrowings** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings
+- **other_liabilities** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Liabilities & Provisions
+- **total_sources_funds** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Liabilities
+- **cash_balances_rbi** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Cash and balances with RBI
+- **bank_call_money** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Balances with banks and money at call
+- **investments** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Investments
+- **advances** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Advances
+- **gross_block** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Gross Block
+- **acc_depreciation** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Accumulated Depreciation
+- **impairment_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Impairment of Assets
+- **lease_adj** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Lease Adjustment A/c
+- **cwip** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Capital Work in Progress
+- **other_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Assets
+- **total_applications** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Assets
+- **contingent_liabilities** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Contingent Liabilities
+- **bills_for_collection** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Bills for Collection
+- **ltrm_borrowing** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long-Term Borrowings
+- **secured_loans** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Secured Loans
+- **unsecured_loans_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Unsecured Loans
+- **net_def_tax_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Deferred Tax Assets and Liabilities
+- **oth_lt_liab** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Long Term Liabilities
+- **lt_trade_payables** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Trade Payables
+- **lt_provisions** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Provisions
+- **total_nonliab** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Non-Current Liabilities
+- **trade_payables** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Trade Payables
+- **current_liabilities_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Current Liabilities
+- **st_borrowings** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Short Term Borrowings
+- **provisions** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Short Term Provisions
+- **current_laib_prov_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Current Liabilities
+- **total_sounces_funds_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Liabilities
+- **loan_non_cuurent_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Loan Non-Current Assets
+- **net_block** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Net Block / Fixed Asset
+- **cwip_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): CWIP Non-Financial
+- **intang_assetunderdev** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Intangible assets under development
+- **pre_operatieve_exps** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Pre-operative Expenses pending
+- **assetsintransit** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Assets in Transit
+- **investments_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Non-Current Investments
+- **lt_loanadv** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Loans & Advances
+- **other_noc_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Non-Current Assets
+- **total_nonassets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Non-Current Assets
+- **current_investments** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Current Investments
+- **inventory** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inventories
+- **debtors** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Sundry Debtors
+- **cash_bank** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Cash and Bank
+- **other_current_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Current Assets
+- **loans_adv** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Short Term Loans and Advances
+- **currant_assets_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Current Assets
+- **net_current_assets_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Net Current Assets incl. Investments
+- **other_crnt_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Current Assets excl. Investments
+- **misc_exps_not_wo** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Miscellaneous Expenses not written off
+- **total_applications_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Assets (New)
+- **total_debt_inclst_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Total Debt incl. ST
+- **book_nav_share** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Book Value per Share
+- **adj_bv** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Adjusted Book Value
+- **minority_interest** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Minority Interest
+- **equity_authorised** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Equity - Authorised
+- **equity_issued** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Equity - Issued
+- **equity_paidup** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Equity - Paid Up
+- **equity_forfeited** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Equity - Forfeited
+- **adj_equity** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Adjusted Equity
+- **preference_capital** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Preference Capital
+- **face_value** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Face Value
+- **share_premium** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Securities Premium
+- **capital_reserve** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Capital Reserves
+- **profit_loss** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Profit & Loss Account Balances
+- **general_reserve** (`table_name - company_finance_balancesheet: typing.Optional[float]`): General Reserves
+- **reserve_excl_revaluation** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Reserve excluding Revaluation
+- **revaluation_reserve** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Revaluation Reserve
+- **demand_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Demand Deposits
+- **saving_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Savings Deposits
+- **term_fixed_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Term/Fixed Deposits
+- **current_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Current Deposits
+- **recurring_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Recurring Deposits
+- **borrowings_rbi** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings from RBI
+- **borrowings_banks** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings from Banks
+- **borrowings_goi** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings from GOI
+- **borrowings_fi** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings from Financial Institutions
+- **borrowings_bonds** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings in Bonds/Debentures
+- **borrowings_other** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings - Other
+- **borrowings_outof_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Borrowings from Outside India
+- **bills_payable** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Bills Payable
+- **inter_oofice_adjustments_liabilities** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inter-office Adjustments (Liabilities)
+- **interest_accrued** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Interest Accrued
+- **proposed_dividend** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Proposed Dividend
+- **corporate_dividend_tax** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Corporate Dividend Tax Payable
+- **cash_rbi** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Cash with RBI
+- **cash_in_hand** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Cash in Hand & Others
+- **investments_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Investments in India
+- **goi_securities** (`table_name - company_finance_balancesheet: typing.Optional[float]`): GOI / State Government Securities
+- **equity_shares_corporate** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Equity Shares - Corporate
+- **debentures_bonds** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Debentures & Bonds
+- **subsidiaries_joint_ventures** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Subsidiaries / Joint Ventures / Associates
+- **mutual_funds_insurance_units** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Units - MF / Insurance / CP / PTC
+- **investments_outside_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Investments Outside India
+- **goi_securities_outside_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): GOI Securities Outside India
+- **subsidiaries_joint_ventures_outside_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Foreign Subsidiaries / Joint Ventures
+- **other_investments_outside_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Foreign Investments
+- **dimunition_investments** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Provision for Diminution in Investment Value
+- **bills_purchased_discounted** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Bills Purchased & Discounted
+- **cash_credit_overdraft** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Cash Credit, Overdraft, Loans Repayable
+- **term_loans** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Term Loans
+- **finance_lease_hire_purchase** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Finance Lease and Hire Purchase Receivables
+- **buildings** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Premises / Buildings
+- **assets_despose** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Assets Given on Lease
+- **other_fix_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Fixed Assets
+- **inter_office_adjustments_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inter-office Adjustment - Assets
+- **interest_accrued_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Interest Accrued - Assets
+- **advance_tax_tds** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Advance Tax / TDS
+- **stationery_stamps** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Stationery & Stamps
+- **non_banking_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Non-Banking Assets Acquired
+- **deferred_tax_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Deferred Tax Asset
+- **misc_expenditures_not_writtoff** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Miscellaneous Expenditures Not Written Off
+- **claims_not_acknowledge_debt** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Claims Not Acknowledged as Debts
+- **outstanding_forward_exchange_contract** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Outstanding Forward Exchange Contracts
+- **guarantees_constituents_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Guarantees Given in India
+- **guarantees_constituents_outside_india** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Guarantees Given Outside India
+- **acceptances_endorsements_obligations** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Acceptances, Endorsements, Obligations
+- **non_convertible_debenture** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Non-Convertible Debentures
+- **conv_debenture_bnds** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Convertible Debentures & Bonds
+- **packing_credit** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Packing Credit - Bank
+- **intercorpsecdeposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inter-Corporate and Security Deposits
+- **term_loan_bank** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Term Loans from Banks
+- **term_loan_inst** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Term Loans from Institutions
+- **fixed_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Fixed Deposits - Public
+- **loans_susidiaries** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Loans and Advances from Subsidiaries
+- **inter_corp_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inter Corporate Deposits (Unsecured)
+- **foreign_curr_convertible_notes** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Foreign Currency Convertible Notes
+- **foreign_curr_long_term_loans** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Foreign Currency Loans
+- **loans_bank** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Loans from Banks
+- **loans_govt** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Loans from Government
+- **loans_others** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Loans from Others
+- **def_tax_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Deferred Tax Assets
+- **def_tax_liability** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Deferred Tax Liability
+- **sundry_crs** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Sundry Creditors
+- **acceptances** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Acceptances
+- **trade_paysubs** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Due to Subsidiaries - Trade Payables
+- **bank_od** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Bank Overdraft / Short-term Credit
+- **adv_customers** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Advances received from customers
+- **interest_not_due** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Interest Accrued but Not Due
+- **share_application** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Share Application Money
+- **cl_curmat_deb** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Current Maturity of Debentures & Bonds
+- **cl_curmat_others** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Current Maturity - Others
+- **loans** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Loans
+- **stbs_sec_loandemand** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Secured ST Loans Repayable on Demand
+- **stbs_wcap** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Working Capital Loans - Secured
+- **stbu_buycredit** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Buyers Credits - Unsecured
+- **stbu_commborr** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Commercial Borrowings - Unsecured
+- **flag** (`table_name - company_finance_balancesheet: typing.Optional[str]`): Updation Flag
+- **proposed_divided** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Proposed Equity Dividend
+- **prov_corp_tax** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Provision for Corporate Dividend Tax
+- **prov_tax** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Provision for Tax
+- **prov_retirements** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Provision for Post Retirement Benefits
+- **prefence_dividend** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Preference Dividend
+- **long_term_investments_nf** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Investments
+- **long_term_quoted** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Quoted Investments
+- **long_term_unquoted** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Long Term Unquoted Investments
+- **current_quoted** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Current Quoted Investments
+- **raw_material** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Raw Materials
+- **wip** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Work in Progress
+- **fin_goods** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Finished Goods
+- **packing_materials_inventory** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Packing Materials Inventory
+- **store_spares** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Stores and Spares
+- **drs_six_months** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Debtors > 6 months
+- **drs_others** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Other Debtors
+- **cash_hand** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Cash in Hand
+- **bank_balance** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Bank Balances
+- **interest_investments** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Interest on Investments
+- **interest_debentures** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Interest on Debentures
+- **deposits_govt_other** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Deposits with Government / Others
+- **interest_accrued_due** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Interest Accrued and Due on Loans
+- **prepaid_exps** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Prepaid Expenses
+- **adv_cash_kind** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Advances Recoverable in Cash or Kind
+- **adv_tax** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Advance Income Tax and TDS
+- **due_director** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Amounts Due from Directors
+- **due_subsidiaries** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Amounts Due from Subsidiaries
+- **inter_corporate_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inter Corporate Deposits
+- **non_current_assets** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Inter Corporate Deposits
+- **corporate_deposits** (`table_name - company_finance_balancesheet: typing.Optional[float]`): Corporate Deposits
+
+### Table: `company_finance_balancesheet_cons`
+
+- **fincode** (`table_name - company_finance_balancesheet_cons: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_balancesheet_cons: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_balancesheet_cons: <class 'str'>`): Balance Sheet Type: S=Standalone, C=Consolidated
+- **no_months** (`table_name - company_finance_balancesheet_cons: typing.Optional[int]`): Number of months the balance sheet covers
+- **unit** (`table_name - company_finance_balancesheet_cons: typing.Optional[int]`): Unit of figures
+- **share_capital** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Share Capital
+- **shares_warrants** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Share Warrants
+- **shares_application_money** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Share Application Money
+- **esop_outstanding** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): ESOP Outstanding
+- **share_suspense** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Share Capital Suspense Account
+- **reserve** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Reserves
+- **shareholders_funds** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Shareholder's Funds
+- **deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Deposits
+- **borrowings** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings
+- **other_liabilities** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Liabilities & Provisions
+- **total_sources_funds** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Liabilities
+- **cash_balances_rbi** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Cash and balances with RBI
+- **bank_call_money** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Balances with banks and money at call
+- **investments** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Investments
+- **advances** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Advances
+- **gross_block** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Gross Block
+- **acc_depreciation** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Accumulated Depreciation
+- **impairment_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Impairment of Assets
+- **lease_adj** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Lease Adjustment A/c
+- **cwip** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Capital Work in Progress
+- **other_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Assets
+- **total_applications** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Assets
+- **contingent_liabilities** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Contingent Liabilities
+- **bills_for_collection** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Bills for Collection
+- **ltrm_borrowing** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long-Term Borrowings
+- **secured_loans** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Secured Loans
+- **unsecured_loans_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Unsecured Loans
+- **net_def_tax_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Deferred Tax Assets and Liabilities
+- **oth_lt_liab** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Long Term Liabilities
+- **lt_trade_payables** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Trade Payables
+- **lt_provisions** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Provisions
+- **total_nonliab** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Non-Current Liabilities
+- **trade_payables** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Trade Payables
+- **current_liabilities_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Current Liabilities
+- **st_borrowings** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Short Term Borrowings
+- **provisions** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Short Term Provisions
+- **current_laib_prov_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Current Liabilities
+- **total_sounces_funds_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Liabilities
+- **loan_non_cuurent_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Loan Non-Current Assets
+- **net_block** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Net Block / Fixed Asset
+- **cwip_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): CWIP Non-Financial
+- **intang_assetunderdev** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Intangible assets under development
+- **pre_operatieve_exps** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Pre-operative Expenses pending
+- **assetsintransit** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Assets in Transit
+- **investments_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Non-Current Investments
+- **lt_loanadv** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Loans & Advances
+- **other_noc_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Non-Current Assets
+- **total_nonassets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Non-Current Assets
+- **current_investments** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Current Investments
+- **inventory** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inventories
+- **debtors** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Sundry Debtors
+- **cash_bank** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Cash and Bank
+- **other_current_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Current Assets
+- **loans_adv** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Short Term Loans and Advances
+- **currant_assets_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Current Assets
+- **net_current_assets_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Net Current Assets incl. Investments
+- **other_crnt_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Current Assets excl. Investments
+- **misc_exps_not_wo** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Miscellaneous Expenses not written off
+- **total_applications_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Assets (New)
+- **total_debt_inclst_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Total Debt incl. ST
+- **book_nav_share** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Book Value per Share
+- **adj_bv** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Adjusted Book Value
+- **minority_interest** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Minority Interest
+- **equity_authorised** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Equity - Authorised
+- **equity_issued** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Equity - Issued
+- **equity_paidup** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Equity - Paid Up
+- **equity_forfeited** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Equity - Forfeited
+- **adj_equity** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Adjusted Equity
+- **preference_capital** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Preference Capital
+- **face_value** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Face Value
+- **share_premium** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Securities Premium
+- **capital_reserve** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Capital Reserves
+- **profit_loss** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Profit & Loss Account Balances
+- **general_reserve** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): General Reserves
+- **reserve_excl_revaluation** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Reserve excluding Revaluation
+- **revaluation_reserve** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Revaluation Reserve
+- **demand_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Demand Deposits
+- **saving_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Savings Deposits
+- **term_fixed_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Term/Fixed Deposits
+- **current_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Current Deposits
+- **recurring_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Recurring Deposits
+- **borrowings_rbi** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings from RBI
+- **borrowings_banks** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings from Banks
+- **borrowings_goi** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings from GOI
+- **borrowings_fi** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings from Financial Institutions
+- **borrowings_bonds** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings in Bonds/Debentures
+- **borrowings_other** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings - Other
+- **borrowings_outof_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Borrowings from Outside India
+- **bills_payable** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Bills Payable
+- **inter_oofice_adjustments_liabilities** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inter-office Adjustments (Liabilities)
+- **interest_accrued** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Interest Accrued
+- **proposed_dividend** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Proposed Dividend
+- **corporate_dividend_tax** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Corporate Dividend Tax Payable
+- **cash_rbi** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Cash with RBI
+- **cash_in_hand** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Cash in Hand & Others
+- **investments_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Investments in India
+- **goi_securities** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): GOI / State Government Securities
+- **equity_shares_corporate** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Equity Shares - Corporate
+- **debentures_bonds** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Debentures & Bonds
+- **subsidiaries_joint_ventures** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Subsidiaries / Joint Ventures / Associates
+- **mutual_funds_insurance_units** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Units - MF / Insurance / CP / PTC
+- **investments_outside_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Investments Outside India
+- **goi_securities_outside_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): GOI Securities Outside India
+- **subsidiaries_joint_ventures_outside_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Foreign Subsidiaries / Joint Ventures
+- **other_investments_outside_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Foreign Investments
+- **dimunition_investments** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Provision for Diminution in Investment Value
+- **bills_purchased_discounted** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Bills Purchased & Discounted
+- **cash_credit_overdraft** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Cash Credit, Overdraft, Loans Repayable
+- **term_loans** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Term Loans
+- **finance_lease_hire_purchase** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Finance Lease and Hire Purchase Receivables
+- **buildings** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Premises / Buildings
+- **assets_despose** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Assets Given on Lease
+- **other_fix_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Fixed Assets
+- **inter_office_adjustments_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inter-office Adjustment - Assets
+- **interest_accrued_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Interest Accrued - Assets
+- **advance_tax_tds** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Advance Tax / TDS
+- **stationery_stamps** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Stationery & Stamps
+- **non_banking_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Non-Banking Assets Acquired
+- **deferred_tax_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Deferred Tax Asset
+- **misc_expenditures_not_writtoff** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Miscellaneous Expenditures Not Written Off
+- **claims_not_acknowledge_debt** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Claims Not Acknowledged as Debts
+- **outstanding_forward_exchange_contract** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Outstanding Forward Exchange Contracts
+- **guarantees_constituents_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Guarantees Given in India
+- **guarantees_constituents_outside_india** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Guarantees Given Outside India
+- **acceptances_endorsements_obligations** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Acceptances, Endorsements, Obligations
+- **non_convertible_debenture** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Non-Convertible Debentures
+- **conv_debenture_bnds** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Convertible Debentures & Bonds
+- **packing_credit** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Packing Credit - Bank
+- **intercorpsecdeposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inter-Corporate and Security Deposits
+- **term_loan_bank** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Term Loans from Banks
+- **term_loan_inst** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Term Loans from Institutions
+- **fixed_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Fixed Deposits - Public
+- **loans_susidiaries** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Loans and Advances from Subsidiaries
+- **inter_corp_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inter Corporate Deposits (Unsecured)
+- **foreign_curr_convertible_notes** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Foreign Currency Convertible Notes
+- **foreign_curr_long_term_loans** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Foreign Currency Loans
+- **loans_bank** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Loans from Banks
+- **loans_govt** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Loans from Government
+- **loans_others** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Loans from Others
+- **def_tax_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Deferred Tax Assets
+- **def_tax_liability** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Deferred Tax Liability
+- **sundry_crs** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Sundry Creditors
+- **acceptances** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Acceptances
+- **trade_paysubs** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Due to Subsidiaries - Trade Payables
+- **bank_od** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Bank Overdraft / Short-term Credit
+- **adv_customers** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Advances received from customers
+- **interest_not_due** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Interest Accrued but Not Due
+- **share_application** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Share Application Money
+- **cl_curmat_deb** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Current Maturity of Debentures & Bonds
+- **cl_curmat_others** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Current Maturity - Others
+- **loans** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Loans
+- **stbs_sec_loandemand** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Secured ST Loans Repayable on Demand
+- **stbs_wcap** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Working Capital Loans - Secured
+- **stbu_buycredit** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Buyers Credits - Unsecured
+- **stbu_commborr** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Commercial Borrowings - Unsecured
+- **flag** (`table_name - company_finance_balancesheet_cons: typing.Optional[str]`): Updation Flag
+- **proposed_divided** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Proposed Equity Dividend
+- **prov_corp_tax** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Provision for Corporate Dividend Tax
+- **prov_tax** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Provision for Tax
+- **prov_retirements** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Provision for Post Retirement Benefits
+- **prefence_dividend** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Preference Dividend
+- **long_term_investments_nf** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Investments
+- **long_term_quoted** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Quoted Investments
+- **long_term_unquoted** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Long Term Unquoted Investments
+- **current_quoted** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Current Quoted Investments
+- **raw_material** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Raw Materials
+- **wip** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Work in Progress
+- **fin_goods** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Finished Goods
+- **packing_materials_inventory** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Packing Materials Inventory
+- **store_spares** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Stores and Spares
+- **drs_six_months** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Debtors > 6 months
+- **drs_others** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Other Debtors
+- **cash_hand** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Cash in Hand
+- **bank_balance** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Bank Balances
+- **interest_investments** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Interest on Investments
+- **interest_debentures** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Interest on Debentures
+- **deposits_govt_other** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Deposits with Government / Others
+- **interest_accrued_due** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Interest Accrued and Due on Loans
+- **prepaid_exps** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Prepaid Expenses
+- **adv_cash_kind** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Advances Recoverable in Cash or Kind
+- **adv_tax** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Advance Income Tax and TDS
+- **due_director** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Amounts Due from Directors
+- **due_subsidiaries** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Amounts Due from Subsidiaries
+- **inter_corporate_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inter Corporate Deposits
+- **non_current_assets** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Inter Corporate Deposits
+- **corporate_deposits** (`table_name - company_finance_balancesheet_cons: typing.Optional[float]`): Corporate Deposits
+
+### Table: `company_finance_cashflow`
+
+- **fincode** (`table_name - company_finance_cashflow: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_cashflow: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_cashflow: <class 'str'>`): To indicate type of the balancesheet. S = Standalone, C = Consolidated
+- **no_months** (`table_name - company_finance_cashflow: typing.Optional[int]`): No. of Months balancesheet
+- **unit** (`table_name - company_finance_cashflow: typing.Optional[int]`): To indicate figures are in which unit
+- **profit_bef_tax** (`table_name - company_finance_cashflow: typing.Optional[float]`): Profit_bef_tax
+- **adjustment_total** (`table_name - company_finance_cashflow: typing.Optional[float]`): Adjustment_total
+- **change_wc_total** (`table_name - company_finance_cashflow: typing.Optional[float]`): Change_WC_total
+- **tax_paid** (`table_name - company_finance_cashflow: typing.Optional[float]`): Tax_paid
+- **other_dir_exps** (`table_name - company_finance_cashflow: typing.Optional[float]`): Other_Dir_exps
+- **cash_from_operation** (`table_name - company_finance_cashflow: typing.Optional[float]`): Cash_from_Operation
+- **cash_from_investment** (`table_name - company_finance_cashflow: typing.Optional[float]`): Cash_from_Investment
+- **cash_from_financing** (`table_name - company_finance_cashflow: typing.Optional[float]`): Cash_from_Financing
+- **f_exch_diff** (`table_name - company_finance_cashflow: typing.Optional[float]`): FExchDiff
+- **net_cash_inflow_outflow** (`table_name - company_finance_cashflow: typing.Optional[float]`): Net_Cash_inflow_outflow
+- **opening_cash** (`table_name - company_finance_cashflow: typing.Optional[float]`): Opening_cash
+- **cash_amalgamation** (`table_name - company_finance_cashflow: typing.Optional[float]`): Cash_amalgamation
+- **cash_subsidiaries** (`table_name - company_finance_cashflow: typing.Optional[float]`): Cash_subsidiaries
+- **traslation_adj_subsidiaries** (`table_name - company_finance_cashflow: typing.Optional[float]`): Traslation_adj_Subsidiaries
+- **effect_foreign_exchange** (`table_name - company_finance_cashflow: typing.Optional[float]`): Effect_foreign_exchange
+- **closing_cash** (`table_name - company_finance_cashflow: typing.Optional[float]`): Closing_cash
+- **cashflow_after_wc** (`table_name - company_finance_cashflow: typing.Optional[float]`): Cashflow_after_WC
+- **flag** (`table_name - company_finance_cashflow: typing.Optional[str]`): Updation Flag
+
+### Table: `company_finance_cashflow_cons`
+
+- **fincode** (`table_name - company_finance_cashflow_cons: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_cashflow_cons: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_cashflow_cons: <class 'str'>`): To indicate type of the balancesheet. S = Standalone, C = Consolidated
+- **no_months** (`table_name - company_finance_cashflow_cons: typing.Optional[int]`): No. of Months balancesheet
+- **unit** (`table_name - company_finance_cashflow_cons: typing.Optional[int]`): To indicate figures are in which unit
+- **profit_bef_tax** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Profit_bef_tax
+- **adjustment_total** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Adjustment_total
+- **change_wc_total** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Change_WC_total
+- **tax_paid** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Tax_paid
+- **other_dir_exps** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Other_Dir_exps
+- **cash_from_operation** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Cash_from_Operation
+- **cash_from_investment** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Cash_from_Investment
+- **cash_from_financing** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Cash_from_Financing
+- **f_exch_diff** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): FExchDiff
+- **net_cash_inflow_outflow** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Net_Cash_inflow_outflow
+- **opening_cash** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Opening_cash
+- **cash_amalgamation** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Cash_amalgamation
+- **cash_subsidiaries** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Cash_subsidiaries
+- **traslation_adj_subsidiaries** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Traslation_adj_Subsidiaries
+- **effect_foreign_exchange** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Effect_foreign_exchange
+- **closing_cash** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Closing_cash
+- **cashflow_after_wc** (`table_name - company_finance_cashflow_cons: typing.Optional[float]`): Cashflow_after_WC
+- **flag** (`table_name - company_finance_cashflow_cons: typing.Optional[str]`): Updation Flag
+
+### Table: `company_finance_profitloss`
+
+- **fincode** (`table_name - company_finance_profitloss: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_profitloss: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_profitloss: <class 'str'>`): Type of Balance Sheet: S = Standalone, C = Consolidated
+- **no_months** (`table_name - company_finance_profitloss: typing.Optional[int]`): No. of Months in Balance Sheet
+- **unit** (`table_name - company_finance_profitloss: typing.Optional[int]`): Unit of Figures
+- **interest_earned** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest Earned
+- **other_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Other Income
+- **total_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Total Income
+- **interest** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest
+- **operating_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Operating Expenses
+- **provisions_contigency** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provisions and Contingencies
+- **tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income Tax
+- **total** (`table_name - company_finance_profitloss: typing.Optional[float]`): Total Expenditure for Banks
+- **profit_after_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit After Tax
+- **extra_items** (`table_name - company_finance_profitloss: typing.Optional[float]`): Extra Items
+- **profit_brought_forward** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit Balance B/F
+- **minority_interest** (`table_name - company_finance_profitloss: typing.Optional[float]`): Minority Interest
+- **share_associate** (`table_name - company_finance_profitloss: typing.Optional[float]`): Share of Associate
+- **other_consitems** (`table_name - company_finance_profitloss: typing.Optional[float]`): Other Consolidated Items
+- **consolidated_netprofit** (`table_name - company_finance_profitloss: typing.Optional[float]`): Consolidated Net Profit
+- **adj_net_profit** (`table_name - company_finance_profitloss: typing.Optional[float]`): Adjustments to PAT
+- **extr_items** (`table_name - company_finance_profitloss: typing.Optional[float]`): Extra Items
+- **pnlbf** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit brought forward
+- **profit_availble_appr** (`table_name - company_finance_profitloss: typing.Optional[float]`): Appropriations Available
+- **appropriation** (`table_name - company_finance_profitloss: typing.Optional[float]`): Appropriations
+- **dividend_perc** (`table_name - company_finance_profitloss: typing.Optional[float]`): Equity Dividend %
+- **reported_eps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Reported EPS
+- **gross_sales** (`table_name - company_finance_profitloss: typing.Optional[float]`): Gross Sales
+- **net_sales** (`table_name - company_finance_profitloss: typing.Optional[float]`): Net Sales
+- **inc_dec_inventory** (`table_name - company_finance_profitloss: typing.Optional[float]`): Increase/Decrease in Stock
+- **raw_matrs_consumed** (`table_name - company_finance_profitloss: typing.Optional[float]`): Raw Material Consumed
+- **employees** (`table_name - company_finance_profitloss: typing.Optional[float]`): Employee Cost
+- **other_mfg_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Other Manufacturing Expenses
+- **sellg_admn_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Selling, Administration and Other Expenses
+- **misc_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Miscellaneous Expenses
+- **pre_op_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Less: Expenses Capitalised
+- **total_expendiure** (`table_name - company_finance_profitloss: typing.Optional[float]`): Total Expenditure
+- **operating_profit** (`table_name - company_finance_profitloss: typing.Optional[float]`): Operating Profit
+- **depreciation** (`table_name - company_finance_profitloss: typing.Optional[float]`): Depreciation
+- **profit_before_exception** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit Before Taxation & Exceptional Items
+- **exceptionalincome_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Exceptional Income / Expenses
+- **profit_before_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit Before Tax
+- **taxation** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provision for Tax
+- **profit_available_appropriation** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit Available for appropriations
+- **total_gross_sales** (`table_name - company_finance_profitloss: typing.Optional[float]`): Sales Turnover
+- **excise** (`table_name - company_finance_profitloss: typing.Optional[float]`): Less: Excise
+- **power_fuel** (`table_name - company_finance_profitloss: typing.Optional[float]`): Power & Fuel Cost
+- **gross_profits** (`table_name - company_finance_profitloss: typing.Optional[float]`): PBDT
+- **inter_div_trf** (`table_name - company_finance_profitloss: typing.Optional[float]`): Less: Inter divisional transfers
+- **sales_return** (`table_name - company_finance_profitloss: typing.Optional[float]`): Less: Sales Returns
+- **sellg_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Selling and Distribution Expenses
+- **cost_sw** (`table_name - company_finance_profitloss: typing.Optional[float]`): Cost of Software development
+- **provision_investment** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provision for investments
+- **provision_advances** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provision for advances
+- **provision_other** (`table_name - company_finance_profitloss: typing.Optional[float]`): Others
+- **curr_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Current Income Tax
+- **def_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Deferred Tax
+- **fringe_benefits** (`table_name - company_finance_profitloss: typing.Optional[float]`): Fringe Benefit tax
+- **wealth_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Wealth Tax
+- **interest_advances_bills** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest/Discount on advances/Bills
+- **job_works** (`table_name - company_finance_profitloss: typing.Optional[float]`): Job works
+- **service_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Service income
+- **opening_rm** (`table_name - company_finance_profitloss: typing.Optional[float]`): Opening Raw Materials
+- **purchases_rm** (`table_name - company_finance_profitloss: typing.Optional[float]`): Purchases Raw Materials
+- **closing_rm** (`table_name - company_finance_profitloss: typing.Optional[float]`): Closing Raw Materials
+- **purchases_fg** (`table_name - company_finance_profitloss: typing.Optional[float]`): Other Direct Purchases / Brought in cost
+- **electricity** (`table_name - company_finance_profitloss: typing.Optional[float]`): Electricity & Power
+- **oils_fuels** (`table_name - company_finance_profitloss: typing.Optional[float]`): Aircraft Fuel
+- **coals** (`table_name - company_finance_profitloss: typing.Optional[float]`): Coals etc
+- **salaries** (`table_name - company_finance_profitloss: typing.Optional[float]`): Salaries, Wages & Bonus
+- **providend_fund_contri** (`table_name - company_finance_profitloss: typing.Optional[float]`): Contributions to EPF & Pension Funds
+- **staff_welfare** (`table_name - company_finance_profitloss: typing.Optional[float]`): Workmen and Staff Welfare Expenses
+- **sub_contract** (`table_name - company_finance_profitloss: typing.Optional[float]`): sub contract
+- **processing_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Processing Charges
+- **repairs_maintenance** (`table_name - company_finance_profitloss: typing.Optional[float]`): Repairs and Maintenance
+- **upkeep_maintenance** (`table_name - company_finance_profitloss: typing.Optional[float]`): UpKeep maintenance
+- **rent_rates_taxes** (`table_name - company_finance_profitloss: typing.Optional[float]`): Rent , Rates & Taxes
+- **insurance** (`table_name - company_finance_profitloss: typing.Optional[float]`): Insurance
+- **priting_stationery** (`table_name - company_finance_profitloss: typing.Optional[float]`): Printing and stationery
+- **professional_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Professional and legal fees
+- **travelling** (`table_name - company_finance_profitloss: typing.Optional[float]`): Traveling and conveyance
+- **advertising** (`table_name - company_finance_profitloss: typing.Optional[float]`): Advertisement & Sales Promotion
+- **commission_incentives** (`table_name - company_finance_profitloss: typing.Optional[float]`): Sales Commissions & Incentives
+- **freight_forwardings** (`table_name - company_finance_profitloss: typing.Optional[float]`): Freight and Forwarding
+- **handling_clearing** (`table_name - company_finance_profitloss: typing.Optional[float]`): Handling and Clearing Charges
+- **bad_debts** (`table_name - company_finance_profitloss: typing.Optional[float]`): Bad debts /advances written off
+- **prov_doubtfull_debts** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provision for doubtful debts
+- **loss_fixed_assets** (`table_name - company_finance_profitloss: typing.Optional[float]`): Loss on disposal of fixed assets(net)
+- **loss_foreign_exchange** (`table_name - company_finance_profitloss: typing.Optional[float]`): Loss on foreign exchange fluctuations
+- **loss_sale_investment** (`table_name - company_finance_profitloss: typing.Optional[float]`): Loss on sale of non-trade current investments
+- **interest_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest Received
+- **dividend_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Dividend Received
+- **profit_fa** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profit on sale of Fixed Assets
+- **profit_investment** (`table_name - company_finance_profitloss: typing.Optional[float]`): Profits on sale of Investments
+- **prov_written_back** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provision Written Back
+- **foreign_exchange_gain** (`table_name - company_finance_profitloss: typing.Optional[float]`): Foreign Exchange Gains
+- **interest_deb** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest on Debenture / Bonds
+- **interest_term_loans** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest on Term Loan
+- **interest_fixed_deposits** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest on Fixed deposits
+- **bank_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Bank Charges etc
+- **appropriation_general_reserve** (`table_name - company_finance_profitloss: typing.Optional[float]`): General Reserves
+- **proposed_equity_devided** (`table_name - company_finance_profitloss: typing.Optional[float]`): Proposed Equity Dividend
+- **corp_divd_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Corporate dividend tax
+- **eps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Earnings Per Share
+- **adj_eps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Adjusted EPS
+- **interest_rbi** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest on balances with RBI and other Interbank funds
+- **interest_investment** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income on investments
+- **income_jv_subs** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income earned from subsidiaries/joint venture
+- **rent_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Rent / Lease Income
+- **interest_rbi_borrowings** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest on RBI / inter-bank borrowings
+- **interest_other** (`table_name - company_finance_profitloss: typing.Optional[float]`): Other Interest
+- **depreciation_leased_assets** (`table_name - company_finance_profitloss: typing.Optional[float]`): Depreciation on leased assets
+- **auditor_payment** (`table_name - company_finance_profitloss: typing.Optional[float]`): Auditor's fees and expenses
+- **telephone** (`table_name - company_finance_profitloss: typing.Optional[float]`): Communication Expenses
+- **repairs_other_admin** (`table_name - company_finance_profitloss: typing.Optional[float]`): Repairs and Maintenance
+- **statutory_reserve** (`table_name - company_finance_profitloss: typing.Optional[float]`): Transfer to Statutory Reserve
+- **appropriation_revenue_reserve** (`table_name - company_finance_profitloss: typing.Optional[float]`): Appropriation to Revenue Reserve
+- **other_appropriation** (`table_name - company_finance_profitloss: typing.Optional[float]`): Appropriation to Other Reserves
+- **sale_shares_units** (`table_name - company_finance_profitloss: typing.Optional[float]`): Sale of Shares / Units
+- **interest_earned_loan** (`table_name - company_finance_profitloss: typing.Optional[float]`): Interest income
+- **portfolio_mgt_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Portfolio management services
+- **dividend_earned** (`table_name - company_finance_profitloss: typing.Optional[float]`): Dividend income
+- **brokerage_commission** (`table_name - company_finance_profitloss: typing.Optional[float]`): Brokerages & commissions
+- **processing_fees** (`table_name - company_finance_profitloss: typing.Optional[float]`): Processing fees and other charges
+- **depository_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Depository Charges
+- **security_transaction_tax** (`table_name - company_finance_profitloss: typing.Optional[float]`): Security Transaction tax
+- **software_technical_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Software & Technical expenses
+- **provision_contigency** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provisions for contingencies
+- **provision_npa** (`table_name - company_finance_profitloss: typing.Optional[float]`): Provisions against NPAs
+- **other_interest_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Other Interest Income
+- **commission** (`table_name - company_finance_profitloss: typing.Optional[float]`): Commission, exchange and brokerage
+- **discounts** (`table_name - company_finance_profitloss: typing.Optional[float]`): Discounts
+- **other_investment_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income from investments
+- **sales** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income from Medical Services
+- **income_diagnostic** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income from Diagnostic centre
+- **cash_discount** (`table_name - company_finance_profitloss: typing.Optional[float]`): Less: Concession / Free Treatment
+- **upkeep_service** (`table_name - company_finance_profitloss: typing.Optional[float]`): House Keeping Expenses
+- **consultant_changes** (`table_name - company_finance_profitloss: typing.Optional[float]`): Consultant / Inhouse Fees
+- **packing_materials** (`table_name - company_finance_profitloss: typing.Optional[float]`): Packing Material Consumed
+- **freight_outward** (`table_name - company_finance_profitloss: typing.Optional[float]`): Freight outwards
+- **room_restaurants** (`table_name - company_finance_profitloss: typing.Optional[float]`): Rooms / Restaurant / Banquets
+- **communication_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Communication Services
+- **foods_beverage_sales** (`table_name - company_finance_profitloss: typing.Optional[float]`): Food & Beverages
+- **linen_room_supplies** (`table_name - company_finance_profitloss: typing.Optional[float]`): Linen & Room Supplies
+- **catering_supplies** (`table_name - company_finance_profitloss: typing.Optional[float]`): Catering Supplies
+- **laundry_washing_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Laundry & Washing Expenses
+- **music_banquet_restaurants** (`table_name - company_finance_profitloss: typing.Optional[float]`): Music, Banquets and Restaurants
+- **packing_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Packing expenses
+- **sales_property_development** (`table_name - company_finance_profitloss: typing.Optional[float]`): Revenue from property development
+- **broadcasting_revenue** (`table_name - company_finance_profitloss: typing.Optional[float]`): Broadcasting Revenue
+- **advertisement_revenue** (`table_name - company_finance_profitloss: typing.Optional[float]`): Advertising Revenue
+- **licence_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): License income
+- **subscription_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Subscription income
+- **contents_film_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income from content / Event Shows/ Films
+- **program_production_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Program Production Expenses
+- **telecasting_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Telecasting Expenses
+- **programs_films_right** (`table_name - company_finance_profitloss: typing.Optional[float]`): Programs and Films rights
+- **transmission_epc** (`table_name - company_finance_profitloss: typing.Optional[float]`): Transmission EPC Business
+- **wheeling_transmission** (`table_name - company_finance_profitloss: typing.Optional[float]`): Wheeling & Transmission Charges recoverable
+- **power_purchased** (`table_name - company_finance_profitloss: typing.Optional[float]`): Cost of power purchased
+- **power_project_cost** (`table_name - company_finance_profitloss: typing.Optional[float]`): Power Project Expenses
+- **wheeling_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Wheeling & Transmission Charges Payable
+- **spare_consumed** (`table_name - company_finance_profitloss: typing.Optional[float]`): Cost of Elastimold, Store & Spares Consumed
+- **sub_contract_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Sub Contract Charges
+- **development_rights** (`table_name - company_finance_profitloss: typing.Optional[float]`): Sale of Development Rights
+- **development_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Development Charges
+- **income_investment_property** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income From Investment in Properties
+- **development_rights_cost** (`table_name - company_finance_profitloss: typing.Optional[float]`): Development Rights Cost
+- **shipbuilding_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Income from ship building & Repairs
+- **charter_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Charter Income
+- **freight_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Freight and Demurrage
+- **stevedoreage_cargo_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Stevedoring, Despatch and Cargo expenses
+- **port_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Port, Light and canal Dues
+- **sale_licenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Sale of Equipments & licenses
+- **traded_sw** (`table_name - company_finance_profitloss: typing.Optional[float]`): Software Purchase
+- **tech_fees** (`table_name - company_finance_profitloss: typing.Optional[float]`): Technical sub-contractors
+- **traing_exps** (`table_name - company_finance_profitloss: typing.Optional[float]`): Training Expenses
+- **software_licences** (`table_name - company_finance_profitloss: typing.Optional[float]`): Software License cost
+- **travels_sw** (`table_name - company_finance_profitloss: typing.Optional[float]`): Travel Expenses
+- **insurance_sw** (`table_name - company_finance_profitloss: typing.Optional[float]`): Overseas Group Health Insurance
+- **visa_charges** (`table_name - company_finance_profitloss: typing.Optional[float]`): Visa & Other Charges
+- **contract_support_sw** (`table_name - company_finance_profitloss: typing.Optional[float]`): Post contract support services
+- **rates_taxes** (`table_name - company_finance_profitloss: typing.Optional[float]`): Rates & Taxes
+- **sales_scrap** (`table_name - company_finance_profitloss: typing.Optional[float]`): Excess Baggage & Cancellation Charges
+- **export_benefits** (`table_name - company_finance_profitloss: typing.Optional[float]`): Export Benefits
+- **subsidy_incentives** (`table_name - company_finance_profitloss: typing.Optional[float]`): Subsidy / Grants / Incentives
+- **freight_inward** (`table_name - company_finance_profitloss: typing.Optional[float]`): Landing, Parking and Navigation charges
+- **hire_charges_mfg** (`table_name - company_finance_profitloss: typing.Optional[float]`): Aircrafts / Engines Lease & Hire Charges
+- **donation** (`table_name - company_finance_profitloss: typing.Optional[float]`): Donations
+- **interest_other_income** (`table_name - company_finance_profitloss: typing.Optional[float]`): Others
+- **power_fuel_cost** (`table_name - company_finance_profitloss: typing.Optional[float]`): Cost of Fuel
+- **royalty** (`table_name - company_finance_profitloss: typing.Optional[float]`): License, Royalty and Spectrum Charges
+- **project_expenses** (`table_name - company_finance_profitloss: typing.Optional[float]`): Internet / Bandwidth and Port Charges
+- **flag** (`table_name - company_finance_profitloss: typing.Optional[str]`): Updation Flag
+
+### Table: `company_finance_profitloss_cons`
+
+- **fincode** (`table_name - company_finance_profitloss_cons: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_profitloss_cons: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_profitloss_cons: <class 'str'>`): Type of Balance Sheet: S = Standalone, C = Consolidated
+- **no_months** (`table_name - company_finance_profitloss_cons: typing.Optional[int]`): No. of Months in Balance Sheet
+- **unit** (`table_name - company_finance_profitloss_cons: typing.Optional[int]`): Unit of Figures
+- **interest_earned** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest Earned
+- **other_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Other Income
+- **total_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Total Income
+- **interest** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest
+- **operating_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Operating Expenses
+- **provisions_contigency** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provisions and Contingencies
+- **tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income Tax
+- **total** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Total Expenditure for Banks
+- **profit_after_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit After Tax
+- **extra_items** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Extra Items
+- **profit_brought_forward** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit Balance B/F
+- **minority_interest** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Minority Interest
+- **share_associate** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Share of Associate
+- **other_consitems** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Other Consolidated Items
+- **consolidated_netprofit** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Consolidated Net Profit
+- **adj_net_profit** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Adjustments to PAT
+- **extr_items** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Extra Items
+- **pnlbf** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit brought forward
+- **profit_availble_appr** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Appropriations Available
+- **appropriation** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Appropriations
+- **dividend_perc** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Equity Dividend %
+- **reported_eps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Reported EPS
+- **gross_sales** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Gross Sales
+- **net_sales** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Net Sales
+- **inc_dec_inventory** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Increase/Decrease in Stock
+- **raw_matrs_consumed** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Raw Material Consumed
+- **employees** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Employee Cost
+- **other_mfg_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Other Manufacturing Expenses
+- **sellg_admn_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Selling, Administration and Other Expenses
+- **misc_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Miscellaneous Expenses
+- **pre_op_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Less: Expenses Capitalised
+- **total_expendiure** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Total Expenditure
+- **operating_profit** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Operating Profit
+- **depreciation** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Depreciation
+- **profit_before_exception** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit Before Taxation & Exceptional Items
+- **exceptionalincome_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Exceptional Income / Expenses
+- **profit_before_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit Before Tax
+- **taxation** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provision for Tax
+- **profit_available_appropriation** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit Available for appropriations
+- **total_gross_sales** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Sales Turnover
+- **excise** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Less: Excise
+- **power_fuel** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Power & Fuel Cost
+- **gross_profits** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): PBDT
+- **inter_div_trf** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Less: Inter divisional transfers
+- **sales_return** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Less: Sales Returns
+- **sellg_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Selling and Distribution Expenses
+- **cost_sw** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Cost of Software development
+- **provision_investment** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provision for investments
+- **provision_advances** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provision for advances
+- **provision_other** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Others
+- **curr_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Current Income Tax
+- **def_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Deferred Tax
+- **fringe_benefits** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Fringe Benefit tax
+- **wealth_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Wealth Tax
+- **interest_advances_bills** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest/Discount on advances/Bills
+- **job_works** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Job works
+- **service_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Service income
+- **opening_rm** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Opening Raw Materials
+- **purchases_rm** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Purchases Raw Materials
+- **closing_rm** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Closing Raw Materials
+- **purchases_fg** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Other Direct Purchases / Brought in cost
+- **electricity** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Electricity & Power
+- **oils_fuels** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Aircraft Fuel
+- **coals** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Coals etc
+- **salaries** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Salaries, Wages & Bonus
+- **providend_fund_contri** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Contributions to EPF & Pension Funds
+- **staff_welfare** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Workmen and Staff Welfare Expenses
+- **sub_contract** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): sub contract
+- **processing_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Processing Charges
+- **repairs_maintenance** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Repairs and Maintenance
+- **upkeep_maintenance** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): UpKeep maintenance
+- **rent_rates_taxes** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Rent , Rates & Taxes
+- **insurance** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Insurance
+- **priting_stationery** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Printing and stationery
+- **professional_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Professional and legal fees
+- **travelling** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Traveling and conveyance
+- **advertising** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Advertisement & Sales Promotion
+- **commission_incentives** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Sales Commissions & Incentives
+- **freight_forwardings** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Freight and Forwarding
+- **handling_clearing** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Handling and Clearing Charges
+- **bad_debts** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Bad debts /advances written off
+- **prov_doubtfull_debts** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provision for doubtful debts
+- **loss_fixed_assets** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Loss on disposal of fixed assets(net)
+- **loss_foreign_exchange** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Loss on foreign exchange fluctuations
+- **loss_sale_investment** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Loss on sale of non-trade current investments
+- **interest_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest Received
+- **dividend_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Dividend Received
+- **profit_fa** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profit on sale of Fixed Assets
+- **profit_investment** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Profits on sale of Investments
+- **prov_written_back** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provision Written Back
+- **foreign_exchange_gain** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Foreign Exchange Gains
+- **interest_deb** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest on Debenture / Bonds
+- **interest_term_loans** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest on Term Loan
+- **interest_fixed_deposits** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest on Fixed deposits
+- **bank_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Bank Charges etc
+- **appropriation_general_reserve** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): General Reserves
+- **proposed_equity_devided** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Proposed Equity Dividend
+- **corp_divd_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Corporate dividend tax
+- **eps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Earnings Per Share
+- **adj_eps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Adjusted EPS
+- **interest_rbi** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest on balances with RBI and other Interbank funds
+- **interest_investment** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income on investments
+- **income_jv_subs** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income earned from subsidiaries/joint venture
+- **rent_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Rent / Lease Income
+- **interest_rbi_borrowings** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest on RBI / inter-bank borrowings
+- **interest_other** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Other Interest
+- **depreciation_leased_assets** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Depreciation on leased assets
+- **auditor_payment** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Auditor's fees and expenses
+- **telephone** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Communication Expenses
+- **repairs_other_admin** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Repairs and Maintenance
+- **statutory_reserve** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Transfer to Statutory Reserve
+- **appropriation_revenue_reserve** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Appropriation to Revenue Reserve
+- **other_appropriation** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Appropriation to Other Reserves
+- **sale_shares_units** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Sale of Shares / Units
+- **interest_earned_loan** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Interest income
+- **portfolio_mgt_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Portfolio management services
+- **dividend_earned** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Dividend income
+- **brokerage_commission** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Brokerages & commissions
+- **processing_fees** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Processing fees and other charges
+- **depository_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Depository Charges
+- **security_transaction_tax** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Security Transaction tax
+- **software_technical_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Software & Technical expenses
+- **provision_contigency** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provisions for contingencies
+- **provision_npa** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Provisions against NPAs
+- **other_interest_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Other Interest Income
+- **commission** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Commission, exchange and brokerage
+- **discounts** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Discounts
+- **other_investment_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income from investments
+- **sales** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income from Medical Services
+- **income_diagnostic** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income from Diagnostic centre
+- **cash_discount** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Less: Concession / Free Treatment
+- **upkeep_service** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): House Keeping Expenses
+- **consultant_changes** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Consultant / Inhouse Fees
+- **packing_materials** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Packing Material Consumed
+- **freight_outward** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Freight outwards
+- **room_restaurants** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Rooms / Restaurant / Banquets
+- **communication_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Communication Services
+- **foods_beverage_sales** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Food & Beverages
+- **linen_room_supplies** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Linen & Room Supplies
+- **catering_supplies** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Catering Supplies
+- **laundry_washing_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Laundry & Washing Expenses
+- **music_banquet_restaurants** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Music, Banquets and Restaurants
+- **packing_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Packing expenses
+- **sales_property_development** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Revenue from property development
+- **broadcasting_revenue** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Broadcasting Revenue
+- **advertisement_revenue** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Advertising Revenue
+- **licence_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): License income
+- **subscription_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Subscription income
+- **contents_film_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income from content / Event Shows/ Films
+- **program_production_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Program Production Expenses
+- **telecasting_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Telecasting Expenses
+- **programs_films_right** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Programs and Films rights
+- **transmission_epc** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Transmission EPC Business
+- **wheeling_transmission** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Wheeling & Transmission Charges recoverable
+- **power_purchased** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Cost of power purchased
+- **power_project_cost** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Power Project Expenses
+- **wheeling_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Wheeling & Transmission Charges Payable
+- **spare_consumed** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Cost of Elastimold, Store & Spares Consumed
+- **sub_contract_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Sub Contract Charges
+- **development_rights** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Sale of Development Rights
+- **development_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Development Charges
+- **income_investment_property** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income From Investment in Properties
+- **development_rights_cost** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Development Rights Cost
+- **shipbuilding_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Income from ship building & Repairs
+- **charter_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Charter Income
+- **freight_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Freight and Demurrage
+- **stevedoreage_cargo_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Stevedoring, Despatch and Cargo expenses
+- **port_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Port, Light and canal Dues
+- **sale_licenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Sale of Equipments & licenses
+- **traded_sw** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Software Purchase
+- **tech_fees** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Technical sub-contractors
+- **traing_exps** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Training Expenses
+- **software_licences** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Software License cost
+- **travels_sw** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Travel Expenses
+- **insurance_sw** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Overseas Group Health Insurance
+- **visa_charges** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Visa & Other Charges
+- **contract_support_sw** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Post contract support services
+- **rates_taxes** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Rates & Taxes
+- **sales_scrap** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Excess Baggage & Cancellation Charges
+- **export_benefits** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Export Benefits
+- **subsidy_incentives** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Subsidy / Grants / Incentives
+- **freight_inward** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Landing, Parking and Navigation charges
+- **hire_charges_mfg** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Aircrafts / Engines Lease & Hire Charges
+- **donation** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Donations
+- **interest_other_income** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Others
+- **power_fuel_cost** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Cost of Fuel
+- **royalty** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): License, Royalty and Spectrum Charges
+- **project_expenses** (`table_name - company_finance_profitloss_cons: typing.Optional[float]`): Internet / Bandwidth and Port Charges
+- **flag** (`table_name - company_finance_profitloss_cons: typing.Optional[str]`): Updation Flag
+
+### Table: `company_finance_ratio`
+
+- **fincode** (`table_name - company_finance_ratio: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_ratio: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_ratio: <class 'str'>`): Standalone or Consolidated
+- **reported_eps** (`table_name - company_finance_ratio: typing.Optional[float]`): Reported EPS
+- **adjusted_eps** (`table_name - company_finance_ratio: typing.Optional[float]`): Adjusted EPS
+- **ceps** (`table_name - company_finance_ratio: typing.Optional[float]`): Cash Earnings per share
+- **dps** (`table_name - company_finance_ratio: typing.Optional[float]`): Dividend Per share
+- **book_nav_share** (`table_name - company_finance_ratio: typing.Optional[float]`): Book NAV Share
+- **tax_rate** (`table_name - company_finance_ratio: typing.Optional[float]`): Tax Rate
+- **core_ebitda_margin** (`table_name - company_finance_ratio: typing.Optional[float]`): Core EBITDA Margin
+- **ebit_margin** (`table_name - company_finance_ratio: typing.Optional[float]`): EBIT Margin
+- **pre_tax_margin** (`table_name - company_finance_ratio: typing.Optional[float]`): Pre Tax Margin
+- **pat_margin** (`table_name - company_finance_ratio: typing.Optional[float]`): PAT Margin
+- **cash_profit_margin** (`table_name - company_finance_ratio: typing.Optional[float]`): Cash Profit Margin
+- **roa** (`table_name - company_finance_ratio: typing.Optional[float]`): Return On Assets
+- **roe** (`table_name - company_finance_ratio: typing.Optional[float]`): Return On Equity
+- **roce** (`table_name - company_finance_ratio: typing.Optional[float]`): Return On Capital Employed
+- **asset_turnover** (`table_name - company_finance_ratio: typing.Optional[float]`): Asset Turnover
+- **sales_fixed_asset** (`table_name - company_finance_ratio: typing.Optional[float]`): Sales Fixed Asset
+- **working_capital_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): Working Capital Sales
+- **fixed_capital_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): Fixed Capital Sales
+- **receivable_days** (`table_name - company_finance_ratio: typing.Optional[float]`): Receivable days
+- **inventory_days** (`table_name - company_finance_ratio: typing.Optional[float]`): Inventory Days
+- **payable_days** (`table_name - company_finance_ratio: typing.Optional[float]`): Payable days
+- **per** (`table_name - company_finance_ratio: typing.Optional[float]`): Price earning ratio P/E ratio
+- **pce** (`table_name - company_finance_ratio: typing.Optional[float]`): Price to cash earnings
+- **price_book** (`table_name - company_finance_ratio: typing.Optional[float]`): Price Book
+- **yield\_** (`table_name - company_finance_ratio: typing.Optional[float]`): Dividend Yield
+- **ev_net_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): EV to Net Sales
+- **ev_core_ebitda** (`table_name - company_finance_ratio: typing.Optional[float]`): EV to Core EBITDA
+- **ev_ebit** (`table_name - company_finance_ratio: typing.Optional[float]`): EV to EBIT
+- **ev_ce** (`table_name - company_finance_ratio: typing.Optional[float]`): EV to Capital Employed
+- **mcap_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): MCap to Sales
+- **net_sales_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Net Sales Growth
+- **pbidt_excl_oi_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): PBIDT to Excl OI Growth
+- **core_ebitda_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Core EBITDA Growth
+- **ebit_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): EBIT Growth
+- **pat_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): PAT Growth
+- **adj_pat_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Adj PAT Growth
+- **adj_eps_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Adj EPS Growth
+- **reported_eps_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Reported EPS Growth
+- **total_debt_equity** (`table_name - company_finance_ratio: typing.Optional[float]`): Total Debt Equity
+- **current_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Current Ratio
+- **quick_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Quick Ratio
+- **interest_cover** (`table_name - company_finance_ratio: typing.Optional[float]`): Interest Cover ratio
+- **total_debt_mcap** (`table_name - company_finance_ratio: typing.Optional[float]`): Total Debt to Mcap
+- **yield_adv** (`table_name - company_finance_ratio: typing.Optional[float]`): Yield Adv
+- **yield_inv** (`table_name - company_finance_ratio: typing.Optional[float]`): Yield Inv
+- **cost_liab** (`table_name - company_finance_ratio: typing.Optional[float]`): Cost Liab
+- **nim** (`table_name - company_finance_ratio: typing.Optional[float]`): Net Interest margin
+- **int_spread** (`table_name - company_finance_ratio: typing.Optional[float]`): Interest Spread ratio
+- **cost_incratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Cost Income ratio
+- **core_cost_incratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Core Cost Income ratio
+- **op_cost_asset** (`table_name - company_finance_ratio: typing.Optional[float]`): Operating Cost to Asset
+- **adj_per** (`table_name - company_finance_ratio: typing.Optional[float]`): Adj PER
+- **tier1_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Tier1Ratio
+- **tier2_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Tier2Ratio
+- **car** (`table_name - company_finance_ratio: typing.Optional[float]`): CAR
+- **core_op_income_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Operating income growth
+- **eps_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): EPS Growth
+- **bvps_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): BVPS Growth
+- **adv_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Advances Growth
+- **loan_deposits** (`table_name - company_finance_ratio: typing.Optional[float]`): Loan to Deposits
+- **cash_deposits** (`table_name - company_finance_ratio: typing.Optional[float]`): Cash to Deposits
+- **investment_deposits** (`table_name - company_finance_ratio: typing.Optional[float]`): Investment to Deposits
+- **inc_loan_deposits** (`table_name - company_finance_ratio: typing.Optional[float]`): IncLoan to Deposits
+- **gross_npa** (`table_name - company_finance_ratio: typing.Optional[float]`): Gross NPA %
+- **net_npa** (`table_name - company_finance_ratio: typing.Optional[float]`): Net NPA %
+- **ownersfund_total_source** (`table_name - company_finance_ratio: typing.Optional[float]`): Ownersfund total Source
+- **fixed_assets_ta** (`table_name - company_finance_ratio: typing.Optional[float]`): Gross sales to Net block
+- **inventory_tr** (`table_name - company_finance_ratio: typing.Optional[float]`): Inventory Turnover
+- **dividend_pr_np** (`table_name - company_finance_ratio: typing.Optional[float]`): Dividend PR NP
+- **dividend_pr_cp** (`table_name - company_finance_ratio: typing.Optional[float]`): Dividend PR CP
+- **earning_retention_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): Earning Retention Ratio
+- **cash_earnings_retention** (`table_name - company_finance_ratio: typing.Optional[float]`): Cash Earnings Retention
+- **price_bv** (`table_name - company_finance_ratio: typing.Optional[float]`): Price BV
+- **return_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): Return Sales
+- **debt_ta** (`table_name - company_finance_ratio: typing.Optional[float]`): Debt TA
+- **ev** (`table_name - company_finance_ratio: typing.Optional[float]`): Enterprise value (Units will be as per Annual Financial data of specific company)
+- **price_sales_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): PriceSalesRatio
+- **ev_ebita** (`table_name - company_finance_ratio: typing.Optional[float]`): EV EBITA
+- **cf_per_share** (`table_name - company_finance_ratio: typing.Optional[float]`): CF PerShare
+- **pcf_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): PCF RATIO
+- **fcf_share** (`table_name - company_finance_ratio: typing.Optional[float]`): FCF Share
+- **pfcf_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): PFCF Ratio
+- **fcf_yield** (`table_name - company_finance_ratio: typing.Optional[float]`): FCF Yield
+- **scf_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): SCF Ratio
+- **gpm** (`table_name - company_finance_ratio: typing.Optional[float]`): GPM
+- **sales_to_total_assets** (`table_name - company_finance_ratio: typing.Optional[float]`): Sales To Total Assets
+- **sales_to_current_assets** (`table_name - company_finance_ratio: typing.Optional[float]`): Sales To Current Assets
+- **total_car_base_i** (`table_name - company_finance_ratio: typing.Optional[float]`): Total CAR baseI
+- **ti_car_base_i** (`table_name - company_finance_ratio: typing.Optional[float]`): TI CAR baseI
+- **tii_car_base_i** (`table_name - company_finance_ratio: typing.Optional[float]`): TII CAR baseI
+- **total_car** (`table_name - company_finance_ratio: typing.Optional[float]`): Total CAR
+- **ti_car** (`table_name - company_finance_ratio: typing.Optional[float]`): TI CAR
+- **tii_car** (`table_name - company_finance_ratio: typing.Optional[float]`): TII CAR
+- **npa_gross** (`table_name - company_finance_ratio: typing.Optional[float]`): Gross NPA Amount
+- **npa_net** (`table_name - company_finance_ratio: typing.Optional[float]`): Net NPA Amount
+- **npa_advances** (`table_name - company_finance_ratio: typing.Optional[float]`): Net NPA %
+- **net_profit_to_pbt** (`table_name - company_finance_ratio: typing.Optional[float]`): NetProfit To PBT
+- **pbt_to_pbit** (`table_name - company_finance_ratio: typing.Optional[float]`): PBT To PBIT
+- **pbit_to_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): PBIT To Sales
+- **net_profit_to_sales** (`table_name - company_finance_ratio: typing.Optional[float]`): NetProfit To Sales
+- **net_sales_to_total_assets** (`table_name - company_finance_ratio: typing.Optional[float]`): NetSales To TotalAssets
+- **return_on_assets** (`table_name - company_finance_ratio: typing.Optional[float]`): Return On Assets. Ignore this field and refer ROA field.
+- **assets_to_equity** (`table_name - company_finance_ratio: typing.Optional[float]`): Assets To Equity
+- **return_on_equity** (`table_name - company_finance_ratio: typing.Optional[float]`): Return On Equity
+- **interest_to_debt** (`table_name - company_finance_ratio: typing.Optional[float]`): Interest To Debt
+- **debt_to_assets** (`table_name - company_finance_ratio: typing.Optional[float]`): Debt To Assets
+- **interest_to_assets** (`table_name - company_finance_ratio: typing.Optional[float]`): Interest To Assets
+- **roe_after_interest** (`table_name - company_finance_ratio: typing.Optional[float]`): ROE After Interest
+- **dividend_payout_per** (`table_name - company_finance_ratio: typing.Optional[float]`): Dividend Payout Per
+- **other_income_to_net_worth** (`table_name - company_finance_ratio: typing.Optional[float]`): OtherIncome To NetWorth
+- **roa_after_interest** (`table_name - company_finance_ratio: typing.Optional[float]`): ROA After Interest
+- **roe_before_other_inc** (`table_name - company_finance_ratio: typing.Optional[float]`): ROE Before OtherInc
+- **roe_after_other_inc** (`table_name - company_finance_ratio: typing.Optional[float]`): ROE After OtherInc
+- **roe_after_tax_rate** (`table_name - company_finance_ratio: typing.Optional[float]`): ROE After Tax Rate
+- **credit_deposit** (`table_name - company_finance_ratio: typing.Optional[float]`): Credit to Deposit
+- **interest_expended_interest_earned** (`table_name - company_finance_ratio: typing.Optional[float]`): InterestExpended to InterestEarned
+- **interest_income_total_funds** (`table_name - company_finance_ratio: typing.Optional[float]`): InterestIncome to TotalFunds
+- **interest_expended_total_funds** (`table_name - company_finance_ratio: typing.Optional[float]`): InterestExpended to TotalFunds
+- **net_interest_income_total_funds** (`table_name - company_finance_ratio: typing.Optional[float]`): NetInterestIncome to TotalFunds
+- **casa** (`table_name - company_finance_ratio: typing.Optional[float]`): CASA
+- **inventory_turnover** (`table_name - company_finance_ratio: typing.Optional[float]`): Inventory Turnover
+- **debtors_turnover** (`table_name - company_finance_ratio: typing.Optional[float]`): Debtors Turnover
+- **adj_pe** (`table_name - company_finance_ratio: typing.Optional[float]`): Adj PE
+- **adjusted_bv** (`table_name - company_finance_ratio: typing.Optional[float]`): Adjusted bv
+- **adj_dps** (`table_name - company_finance_ratio: typing.Optional[float]`): Adj DPS
+- **networth_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Networth Growth
+- **pbdt_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): PBDT Growth
+- **pbit_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): PBIT Growth
+- **pbt_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): PBT Growth
+- **exports_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Exports Growth
+- **imports_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): Imports Growth
+- **mcap_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): MCap Growth
+- **ebidtam** (`table_name - company_finance_ratio: typing.Optional[float]`): EBIDTAM
+- **pbdtm** (`table_name - company_finance_ratio: typing.Optional[float]`): PBDTM
+- **lt_debt_equity_ratio** (`table_name - company_finance_ratio: typing.Optional[float]`): LT Debt Equity Ratio
+- **roic** (`table_name - company_finance_ratio: typing.Optional[float]`): ROIC
+- **total_car_b** (`table_name - company_finance_ratio: typing.Optional[float]`): Total CAR (Basel III)
+- **ti_car_b** (`table_name - company_finance_ratio: typing.Optional[float]`): Tier - 1 (Basel III)
+- **tii_car_b** (`table_name - company_finance_ratio: typing.Optional[float]`): Tier - 2 (Basel III)
+- **flag** (`table_name - company_finance_ratio: typing.Optional[str]`): Updation Flag
+- **cp_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): CP Growth
+- **gb_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): GB Growth
+- **ce_growth** (`table_name - company_finance_ratio: typing.Optional[float]`): CE Growth
+
+### Table: `company_finance_ratio_cons`
+
+- **fincode** (`table_name - company_finance_ratio_cons: <class 'int'>`): Accord Company Code
+- **year_end** (`table_name - company_finance_ratio_cons: <class 'int'>`): Year End
+- **type** (`table_name - company_finance_ratio_cons: <class 'str'>`): Standalone or Consolidated
+- **reported_eps** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Reported EPS
+- **adjusted_eps** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adjusted EPS
+- **ceps** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Cash Earnings per share
+- **dps** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Dividend Per share
+- **book_nav_share** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Book NAV Share
+- **tax_rate** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Tax Rate
+- **core_ebitda_margin** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Core EBITDA Margin
+- **ebit_margin** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EBIT Margin
+- **pre_tax_margin** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Pre Tax Margin
+- **pat_margin** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PAT Margin
+- **cash_profit_margin** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Cash Profit Margin
+- **roa** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Return On Assets
+- **roe** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Return On Equity
+- **roce** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Return On Capital Employed
+- **asset_turnover** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Asset Turnover
+- **sales_fixed_asset** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Sales Fixed Asset
+- **working_capital_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Working Capital Sales
+- **fixed_capital_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Fixed Capital Sales
+- **receivable_days** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Receivable days
+- **inventory_days** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Inventory Days
+- **payable_days** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Payable days
+- **per** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Price earning ratio
+- **pce** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Price to cash earnings
+- **price_book** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Price Book
+- **yield\_** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Dividend Yield
+- **ev_net_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EV to Net Sales
+- **ev_core_ebitda** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EV to Core EBITDA
+- **ev_ebit** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EV to EBIT
+- **ev_ce** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EV to Capital Employed
+- **mcap_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): MCap to Sales
+- **net_sales_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Net Sales Growth
+- **pbidt_excl_oi_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBIDT to Excl OI Growth
+- **core_ebitda_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Core EBITDA Growth
+- **ebit_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EBIT Growth
+- **pat_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PAT Growth
+- **adj_pat_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adj PAT Growth
+- **adj_eps_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adj EPS Growth
+- **reported_eps_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Reported EPS Growth
+- **total_debt_equity** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Total Debt Equity
+- **current_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Current Ratio
+- **quick_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Quick Ratio
+- **interest_cover** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Interest Cover ratio
+- **total_debt_mcap** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Total Debt to Mcap
+- **yield_adv** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Yield Adv
+- **yield_inv** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Yield Inv
+- **cost_liab** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Cost Liab
+- **nim** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Net Interest margin
+- **int_spread** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Interest Spread ratio
+- **cost_incratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Cost Income ratio
+- **core_cost_incratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Core Cost Income ratio
+- **op_cost_asset** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Operating Cost to Asset
+- **adj_per** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adj PER
+- **tier1_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Tier1Ratio
+- **tier2_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Tier2Ratio
+- **car** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): CAR
+- **core_op_income_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Operating income growth
+- **eps_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EPS Growth
+- **bvps_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): BVPS Growth
+- **adv_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Advances Growth
+- **loan_deposits** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Loan to Deposits
+- **cash_deposits** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Cash to Deposits
+- **investment_deposits** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Investment to Deposits
+- **inc_loan_deposits** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): IncLoan to Deposits
+- **gross_npa** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Gross NPA %
+- **net_npa** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Net NPA %
+- **ownersfund_total_source** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Ownersfund total Source
+- **fixed_assets_ta** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Gross sales to Net block
+- **inventory_tr** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Inventory Turnover
+- **dividend_pr_np** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Dividend PR NP
+- **dividend_pr_cp** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Dividend PR CP
+- **earning_retention_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Earning Retention Ratio
+- **cash_earnings_retention** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Cash Earnings Retention
+- **price_bv** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Price BV
+- **return_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Return Sales
+- **debt_ta** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Debt TA
+- **ev** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Enterprise value (Units will be as per Annual Financial data of specific company)
+- **price_sales_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PriceSalesRatio
+- **ev_ebita** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EV EBITA
+- **cf_per_share** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): CF PerShare
+- **pcf_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PCF RATIO
+- **fcf_share** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): FCF Share
+- **pfcf_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PFCF Ratio
+- **fcf_yield** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): FCF Yield
+- **scf_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): SCF Ratio
+- **gpm** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): GPM
+- **sales_to_total_assets** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Sales To Total Assets
+- **sales_to_current_assets** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Sales To Current Assets
+- **total_car_base_i** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Total CAR baseI
+- **ti_car_base_i** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): TI CAR baseI
+- **tii_car_base_i** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): TII CAR baseI
+- **total_car** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Total CAR
+- **ti_car** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): TI CAR
+- **tii_car** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): TII CAR
+- **npa_gross** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Gross NPA Amount
+- **npa_net** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Net NPA Amount
+- **npa_advances** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Net NPA %
+- **net_profit_to_pbt** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): NetProfit To PBT
+- **pbt_to_pbit** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBT To PBIT
+- **pbit_to_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBIT To Sales
+- **net_profit_to_sales** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): NetProfit To Sales
+- **net_sales_to_total_assets** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): NetSales To TotalAssets
+- **return_on_assets** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Return On Assets. Ignore this field and refer ROA field.
+- **assets_to_equity** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Assets To Equity
+- **return_on_equity** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Return On Equity
+- **interest_to_debt** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Interest To Debt
+- **debt_to_assets** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Debt To Assets
+- **interest_to_assets** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Interest To Assets
+- **roe_after_interest** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): ROE After Interest
+- **dividend_payout_per** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Dividend Payout Per
+- **other_income_to_net_worth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): OtherIncome To NetWorth
+- **roa_after_interest** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): ROA After Interest
+- **roe_before_other_inc** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): ROE Before OtherInc
+- **roe_after_other_inc** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): ROE After OtherInc
+- **roe_after_tax_rate** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): ROE After Tax Rate
+- **credit_deposit** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Credit to Deposit
+- **interest_expended_interest_earned** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): InterestExpended to InterestEarned
+- **interest_income_total_funds** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): InterestIncome to TotalFunds
+- **interest_expended_total_funds** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): InterestExpended to TotalFunds
+- **net_interest_income_total_funds** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): NetInterestIncome to TotalFunds
+- **casa** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): CASA
+- **inventory_turnover** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Inventory Turnover
+- **debtors_turnover** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Debtors Turnover
+- **adj_pe** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adj PE
+- **adjusted_bv** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adjusted bv
+- **adj_dps** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Adj DPS
+- **networth_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Networth Growth
+- **pbdt_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBDT Growth
+- **pbit_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBIT Growth
+- **pbt_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBT Growth
+- **exports_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Exports Growth
+- **imports_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Imports Growth
+- **mcap_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): MCap Growth
+- **ebidtam** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): EBIDTAM
+- **pbdtm** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): PBDTM
+- **lt_debt_equity_ratio** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): LT Debt Equity Ratio
+- **roic** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): ROIC
+- **total_car_b** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Total CAR (Basel III)
+- **ti_car_b** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Tier - 1 (Basel III)
+- **tii_car_b** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): Tier - 2 (Basel III)
+- **flag** (`table_name - company_finance_ratio_cons: typing.Optional[str]`): Updation Flag
+- **cp_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): CP Growth
+- **gb_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): GB Growth
+- **ce_growth** (`table_name - company_finance_ratio_cons: typing.Optional[float]`): CE Growth
+
+### Table: `company_results`
+
+- **fincode** (`table_name - company_results: <class 'int'>`): Company Code
+- **result_type** (`table_name - company_results: <class 'str'>`): Result Type. Q-Quarterly, QR-Quarterly revised, H-Halfyearly, HR-Halfyearly revised, A-Annual, AR-Annual revised.
+- **no_of_months** (`table_name - company_results: typing.Optional[int]`): No of Months
+- **date_end** (`table_name - company_results: <class 'int'>`): Date End
+- **net_sales** (`table_name - company_results: typing.Optional[float]`): Total Revenue from Operations
+- **gross_sale** (`table_name - company_results: typing.Optional[float]`): Interest Income
+- **excise_duty** (`table_name - company_results: typing.Optional[float]`): GST
+- **other_net_sales** (`table_name - company_results: typing.Optional[float]`): Income from Operations_net
+- **job_works** (`table_name - company_results: typing.Optional[float]`): Other Operating Income
+- **other_income** (`table_name - company_results: typing.Optional[float]`): Other Income
+- **dividend_income** (`table_name - company_results: typing.Optional[float]`): Dividend Income
+- **export_incentives** (`table_name - company_results: typing.Optional[float]`): Export Incentives
+- **foreign_exchange_gain** (`table_name - company_results: typing.Optional[float]`): Foreign Exchange Gain
+- **profit_investment** (`table_name - company_results: typing.Optional[float]`): Profit on sale of Investments
+- **other_interest_income** (`table_name - company_results: typing.Optional[float]`): Interest Income
+- **rental_income** (`table_name - company_results: typing.Optional[float]`): Lease / Rental Income
+- **sale_shares_units** (`table_name - company_results: typing.Optional[float]`): Profit on sale of Share
+- **prov_written_back** (`table_name - company_results: typing.Optional[float]`): Provision Written Back
+- **sale_assets** (`table_name - company_results: typing.Optional[float]`): Profit on sale of Asset
+- **other_other_income** (`table_name - company_results: typing.Optional[float]`): Other Income
+- **total_income** (`table_name - company_results: typing.Optional[float]`): Total Income
+- **expenditure** (`table_name - company_results: typing.Optional[float]`): Total Expenditure
+- **inc_dec_inventory** (`table_name - company_results: typing.Optional[float]`): (Increase) / Decrease In Stocks
+- **excise** (`table_name - company_results: typing.Optional[float]`): Excise Duty
+- **raw_material_cost** (`table_name - company_results: typing.Optional[float]`): Raw Material Cost
+- **purchase_fin_good** (`table_name - company_results: typing.Optional[float]`): Purchase of Finished Goods
+- **mfg_exps** (`table_name - company_results: typing.Optional[float]`): Manufacturing Expenses
+- **electricity_power_fuel** (`table_name - company_results: typing.Optional[float]`): Electricity , Power & Fuel Cost
+- **exployee_cost** (`table_name - company_results: typing.Optional[float]`): Employees Cost
+- **interest** (`table_name - company_results: typing.Optional[float]`): Interest
+- **depreciation** (`table_name - company_results: typing.Optional[float]`): Depreciation
+- **gen_admin_expenses** (`table_name - company_results: typing.Optional[float]`): General Administration Expenses
+- **selling_dist_expenses** (`table_name - company_results: typing.Optional[float]`): Selling & Distribution Expenses
+- **misc_expenses** (`table_name - company_results: typing.Optional[float]`): Misc Expenses
+- **loss_foreign_exchange** (`table_name - company_results: typing.Optional[float]`): Loss_Foreign_exchange
+- **loss_foreign_exchange_loan** (`table_name - company_results: typing.Optional[float]`): Loss_Foreign_exchange_loan
+- **expence_capitalised** (`table_name - company_results: typing.Optional[float]`): Expenses Capitalised
+- **pb_exitem_satax** (`table_name - company_results: typing.Optional[float]`): Profit before Exceptional Items, Share of Associates and tax
+- **exception_items** (`table_name - company_results: typing.Optional[float]`): Exceptional Items
+- **exc_foreign_exch_gain** (`table_name - company_results: typing.Optional[float]`): Foreign Exchange Gain/Loss
+- **exc_other** (`table_name - company_results: typing.Optional[float]`): Other Exceptional items
+- **pb_satax** (`table_name - company_results: typing.Optional[float]`): Profit before Share of Associates and tax
+- **shares_associate** (`table_name - company_results: typing.Optional[float]`): Share of (loss)/profit in Associates and Joint Ventures
+- **pbt** (`table_name - company_results: typing.Optional[float]`): Profit before tax
+- **tax** (`table_name - company_results: typing.Optional[float]`): Tax
+- **curr_tax** (`table_name - company_results: typing.Optional[float]`): Current Tax
+- **def_tax** (`table_name - company_results: typing.Optional[float]`): Deferred Tax
+- **fringe_benefits** (`table_name - company_results: typing.Optional[float]`): Fringe Benefit Tax
+- **prior_period_tax** (`table_name - company_results: typing.Optional[float]`): Prior Period / Year Tax
+- **mat_credit** (`table_name - company_results: typing.Optional[float]`): MAT Credit
+- **other_tax** (`table_name - company_results: typing.Optional[float]`): Other Tax
+- **pat** (`table_name - company_results: typing.Optional[float]`): Profit after Tax
+- **pbt_disc_operations** (`table_name - company_results: typing.Optional[float]`): Profit before tax from discontinued operations
+- **taxexp_discoperations** (`table_name - company_results: typing.Optional[float]`): Tax expense of discontinued operations
+- **discontinued_op** (`table_name - company_results: typing.Optional[float]`): Profit for the period from discontinued operations
+- **other_related_items** (`table_name - company_results: typing.Optional[float]`): Other related Items
+- **net_profit** (`table_name - company_results: typing.Optional[float]`): Profit for the period
+- **other_compincome** (`table_name - company_results: typing.Optional[float]`): Other Comprehensive Incomes (Net of tax)
+- **items_notclassif_pl** (`table_name - company_results: typing.Optional[float]`): Items that will not be reclassified to profit or loss
+- **it_items_notclassif_pl** (`table_name - company_results: typing.Optional[float]`): Income tax relating to items that will not be reclassified to profit or loss
+- **items_classif_pl** (`table_name - company_results: typing.Optional[float]`): Items that will be reclassified to profit or loss
+- **it_items_classif_pl** (`table_name - company_results: typing.Optional[float]`): Income tax relating to Items that will be reclassified to profit or loss
+- **minint_compincome** (`table_name - company_results: typing.Optional[float]`): Minority Interest Comprehensive Income
+- **othcinc_other** (`table_name - company_results: typing.Optional[float]`): Other
+- **total_compincome** (`table_name - company_results: typing.Optional[float]`): Total Comprehensive Income
+- **netprofit_ownofparent** (`table_name - company_results: typing.Optional[float]`): Net Profit - Owners of the Parent
+- **netprofit_noncontint** (`table_name - company_results: typing.Optional[float]`): Net Profit - Non-controlling interests
+- **other_compinc_ownofparent** (`table_name - company_results: typing.Optional[float]`): Other Comprehensive Income - Owners of the Parent
+- **other_compinc_noncontint** (`table_name - company_results: typing.Optional[float]`): Other Comprehensive Income - Non-controlling interests
+- **totalcompincome_ownofparent** (`table_name - company_results: typing.Optional[float]`): Total Comprehensive Income - Owners of the Parent
+- **minority_interest** (`table_name - company_results: typing.Optional[float]`): Non-controlling interests
+- **equity_cap** (`table_name - company_results: typing.Optional[float]`): Equity Capital
+- **fv** (`table_name - company_results: typing.Optional[float]`): Face Value (In Rs)
+- **reserves** (`table_name - company_results: typing.Optional[float]`): Reserves
+- **epsabs** (`table_name - company_results: typing.Optional[float]`): Calculated EPS (Unit.Curr.)
+- **epsann** (`table_name - company_results: typing.Optional[float]`): Calculated EPS Annualised (Unit.Curr.)
+- **adj_eps_abs** (`table_name - company_results: typing.Optional[float]`): Adj Calculated EPS (Unit.Curr.)
+- **adj_eps_ann** (`table_name - company_results: typing.Optional[float]`): Adj Calculated EPS Annualised (Unit.Curr.)
+- **eps_basic** (`table_name - company_results: typing.Optional[float]`): Basic EPS
+- **eps_diluted_extraord** (`table_name - company_results: typing.Optional[float]`): Diluted EPS
+- **pbidtmexoi** (`table_name - company_results: typing.Optional[float]`): PBIDTM% (Excl OI)
+- **pbidtm** (`table_name - company_results: typing.Optional[float]`): PBIDTM%
+- **pbdtm** (`table_name - company_results: typing.Optional[float]`): PBDTM%
+- **pbtm** (`table_name - company_results: typing.Optional[float]`): PBTM%
+- **patm** (`table_name - company_results: typing.Optional[float]`): PATM%
+- **rev_div_income** (`table_name - company_results: typing.Optional[float]`): Dividend Income
+- **rev_fee_comm** (`table_name - company_results: typing.Optional[float]`): Fees and Commission Income
+- **rev_gain_fairvalue** (`table_name - company_results: typing.Optional[float]`): Gain on Fair value changes
+- **rev_gain_finassets** (`table_name - company_results: typing.Optional[float]`): Gain on de-recognised of Financial Instruments
+- **inc_inv** (`table_name - company_results: typing.Optional[float]`): Profit on sale of Investments
+- **int_bal** (`table_name - company_results: typing.Optional[float]`): Interest on Balances With RBI Other Inter Bank Funds
+- **int_adv** (`table_name - company_results: typing.Optional[float]`): Interest / Discount on Advances / Bills
+- **int_others** (`table_name - company_results: typing.Optional[float]`): Others
+- **operating_ex** (`table_name - company_results: typing.Optional[float]`): Operating Expenses
+- **prov_emp** (`table_name - company_results: typing.Optional[float]`): Payment To Provisions For Employees
+- **other_exp** (`table_name - company_results: typing.Optional[float]`): Other Operating Expenses
+- **operating_profit** (`table_name - company_results: typing.Optional[float]`): Operating Profit before Prov.& Cont.
+- **pac** (`table_name - company_results: typing.Optional[float]`): Provisions and Contingencies
+- **ei** (`table_name - company_results: typing.Optional[float]`): Extraordinary Items
+- **ppi** (`table_name - company_results: typing.Optional[float]`): Prior Period Items
+- **govt_percent_of_shares** (`table_name - company_results: typing.Optional[float]`): % of Shares held by Govt
+- **cap_ratio_percent** (`table_name - company_results: typing.Optional[float]`): Capital Adequacy Ratio Basel II
+- **cap_ratio_percent3** (`table_name - company_results: typing.Optional[float]`): Capital Adequacy Ratio Basel III
+- **tier1basel3** (`table_name - company_results: typing.Optional[float]`): Tier I Basel III
+- **tier2basel3** (`table_name - company_results: typing.Optional[float]`): Tier 2 Basel III
+- **gross_net_npa** (`table_name - company_results: typing.Optional[float]`): Gross / Net NPA
+- **npa_gross** (`table_name - company_results: typing.Optional[float]`): Amount of Gross NPA
+- **npa_net** (`table_name - company_results: typing.Optional[float]`): Amount of Net NPA
+- **perc_gross_net_npa** (`table_name - company_results: typing.Optional[float]`): Percentage of Gross/Net NPA
+- **npa_net_perc** (`table_name - company_results: typing.Optional[float]`): % of Net NPAs
+- **npa_gross_perc** (`table_name - company_results: typing.Optional[float]`): % of Gross NPAs
+- **roa** (`table_name - company_results: typing.Optional[float]`): Return on Assets
+- **prom_no_of_shares** (`table_name - company_results: typing.Optional[float]`): Number of Public Share Holding
+- **prom_percent_of_shares** (`table_name - company_results: typing.Optional[float]`): % of Public Share Holding
+- **eps_basic_extraord** (`table_name - company_results: typing.Optional[float]`): Basic EPS before Extraordinary Items
+- **eps_diluted** (`table_name - company_results: typing.Optional[float]`): Diluted EPS before Extraordinary Items
+- **promoter_nos** (`table_name - company_results: typing.Optional[float]`): Promoters No of Shares
+- **encumbered_nos** (`table_name - company_results: typing.Optional[float]`): Encumbered No of Shares
+- **percentage_pledgedpromoter** (`table_name - company_results: typing.Optional[float]`): Encumbered % of Promoter Holdings
+- **percentage_pledgedcapital** (`table_name - company_results: typing.Optional[float]`): Encumbered % of Share Capital
+- **nonpledgedencum** (`table_name - company_results: typing.Optional[float]`): Non Encumbered
+- **nonpledged_nos** (`table_name - company_results: typing.Optional[float]`): Non Encumbered No of Shares
+- **percentage_nonpledgedpromoter** (`table_name - company_results: typing.Optional[float]`): Non Encumbered % of Promoter Holdings
+- **percentage_nonpledgedcapital** (`table_name - company_results: typing.Optional[float]`): Non Encumbered % of Share Capital
+- **casa** (`table_name - company_results: typing.Optional[float]`): CASA%
+- **casa_amount** (`table_name - company_results: typing.Optional[float]`): CASA Amount
+- **nim** (`table_name - company_results: typing.Optional[float]`): NIM %
+- **gross_profit** (`table_name - company_results: typing.Optional[float]`): Gross Profit
+- **pref_cap** (`table_name - company_results: typing.Optional[float]`): Preference Capital
+- **misc_expd_woff** (`table_name - company_results: typing.Optional[float]`): Misc. Expenses Written off
+- **consolidated_net_profit** (`table_name - company_results: typing.Optional[float]`): Consolidated Net Profit
+- **notes** (`table_name - company_results: typing.Optional[str]`): Note
+- **return_on_capital_employed** (`table_name - company_results: typing.Optional[float]`): Return on Capital Employed
+- **debt_equity_ratio** (`table_name - company_results: typing.Optional[float]`): Debt/Equity Ratio
+- **interest_coverage_ratio** (`table_name - company_results: typing.Optional[float]`): Interest Coverage Ratio
+- **inventory_turnover_ratio** (`table_name - company_results: typing.Optional[float]`): Inventory Turnover Ratio
+- **debtor_turnover_ratio** (`table_name - company_results: typing.Optional[float]`): Debtor Turnover Ratio
+- **dividend_per_share** (`table_name - company_results: typing.Optional[float]`): Dividend per share
+- **dividend_payout_ratio** (`table_name - company_results: typing.Optional[float]`): Dividend payout ratio
+- **other_adjustments** (`table_name - company_results: typing.Optional[float]`): Other Adjustments
+- **pbidtxoi** (`table_name - company_results: typing.Optional[float]`): PBIDT (Excl OI)
+- **operating_profit_margin** (`table_name - company_results: typing.Optional[float]`): Operating Profit Margin
+- **net_profit_margin** (`table_name - company_results: typing.Optional[float]`): Net Profit Margin
+- **cash_bank** (`table_name - company_results: typing.Optional[float]`): Cash and Cash Equivalents
+- **debtors** (`table_name - company_results: typing.Optional[float]`): Debtors
+- **inventory** (`table_name - company_results: typing.Optional[float]`): Inventory
+- **loans_adv** (`table_name - company_results: typing.Optional[float]`): Loans and Advances
+- **ns_grand_total** (`table_name - company_results: typing.Optional[float]`): Number of shares outstanding
+- **ns_totalpublic** (`table_name - company_results: typing.Optional[float]`): nsTotalpublic
+- **tp_totalpublic** (`table_name - company_results: typing.Optional[float]`): tpTotalpublic
+- **provisions_coverage** (`table_name - company_results: typing.Optional[float]`): Provisions Coverage %
+- **no_of_atms** (`table_name - company_results: typing.Optional[float]`): No of ATMs
+- **no_of_branches** (`table_name - company_results: typing.Optional[float]`): No of Branches
+- **tier_i_basel_ii** (`table_name - company_results: typing.Optional[float]`): Tier I Basel II
+- **tier_2_basel_ii** (`table_name - company_results: typing.Optional[float]`): Tier 2 Basel II
+- **no_of_employes** (`table_name - company_results: typing.Optional[float]`): No of Employes
+- **flag** (`table_name - company_results: typing.Optional[str]`): Updation Flag
+
+### Table: `company_results_cons`
+
+- **fincode** (`table_name - company_results_cons: <class 'int'>`): Company Code
+- **result_type** (`table_name - company_results_cons: <class 'str'>`): Result Type. Q-Quarterly, QR-Quarterly revised, H-Halfyearly, HR-Halfyearly revised, A-Annual, AR-Annual revised.
+- **no_of_months** (`table_name - company_results_cons: typing.Optional[int]`): No of Months
+- **date_end** (`table_name - company_results_cons: <class 'int'>`): Date End
+- **net_sales** (`table_name - company_results_cons: typing.Optional[float]`): Total Revenue from Operations
+- **gross_sale** (`table_name - company_results_cons: typing.Optional[float]`): Interest Income
+- **excise_duty** (`table_name - company_results_cons: typing.Optional[float]`): GST
+- **other_net_sales** (`table_name - company_results_cons: typing.Optional[float]`): Income from Operations_net
+- **job_works** (`table_name - company_results_cons: typing.Optional[float]`): Other Operating Income
+- **other_income** (`table_name - company_results_cons: typing.Optional[float]`): Other Income
+- **dividend_income** (`table_name - company_results_cons: typing.Optional[float]`): Dividend Income
+- **export_incentives** (`table_name - company_results_cons: typing.Optional[float]`): Export Incentives
+- **foreign_exchange_gain** (`table_name - company_results_cons: typing.Optional[float]`): Foreign Exchange Gain
+- **profit_investment** (`table_name - company_results_cons: typing.Optional[float]`): Profit on sale of Investments
+- **other_interest_income** (`table_name - company_results_cons: typing.Optional[float]`): Interest Income
+- **rental_income** (`table_name - company_results_cons: typing.Optional[float]`): Lease / Rental Income
+- **sale_shares_units** (`table_name - company_results_cons: typing.Optional[float]`): Profit on sale of Share
+- **prov_written_back** (`table_name - company_results_cons: typing.Optional[float]`): Provision Written Back
+- **sale_assets** (`table_name - company_results_cons: typing.Optional[float]`): Profit on sale of Asset
+- **other_other_income** (`table_name - company_results_cons: typing.Optional[float]`): Other Income
+- **total_income** (`table_name - company_results_cons: typing.Optional[float]`): Total Income
+- **expenditure** (`table_name - company_results_cons: typing.Optional[float]`): Total Expenditure
+- **inc_dec_inventory** (`table_name - company_results_cons: typing.Optional[float]`): (Increase) / Decrease In Stocks
+- **excise** (`table_name - company_results_cons: typing.Optional[float]`): Excise Duty
+- **raw_material_cost** (`table_name - company_results_cons: typing.Optional[float]`): Raw Material Cost
+- **purchase_fin_good** (`table_name - company_results_cons: typing.Optional[float]`): Purchase of Finished Goods
+- **mfg_exps** (`table_name - company_results_cons: typing.Optional[float]`): Manufacturing Expenses
+- **electricity_power_fuel** (`table_name - company_results_cons: typing.Optional[float]`): Electricity , Power & Fuel Cost
+- **exployee_cost** (`table_name - company_results_cons: typing.Optional[float]`): Employees Cost
+- **interest** (`table_name - company_results_cons: typing.Optional[float]`): Interest
+- **depreciation** (`table_name - company_results_cons: typing.Optional[float]`): Depreciation
+- **gen_admin_expenses** (`table_name - company_results_cons: typing.Optional[float]`): General Administration Expenses
+- **selling_dist_expenses** (`table_name - company_results_cons: typing.Optional[float]`): Selling & Distribution Expenses
+- **misc_expenses** (`table_name - company_results_cons: typing.Optional[float]`): Misc Expenses
+- **loss_foreign_exchange** (`table_name - company_results_cons: typing.Optional[float]`): Loss_Foreign_exchange
+- **loss_foreign_exchange_loan** (`table_name - company_results_cons: typing.Optional[float]`): Loss_Foreign_exchange_loan
+- **expence_capitalised** (`table_name - company_results_cons: typing.Optional[float]`): Expenses Capitalised
+- **pb_exitem_satax** (`table_name - company_results_cons: typing.Optional[float]`): Profit before Exceptional Items, Share of Associates and tax
+- **exception_items** (`table_name - company_results_cons: typing.Optional[float]`): Exceptional Items
+- **exc_foreign_exch_gain** (`table_name - company_results_cons: typing.Optional[float]`): Foreign Exchange Gain/Loss
+- **exc_other** (`table_name - company_results_cons: typing.Optional[float]`): Other Exceptional items
+- **pb_satax** (`table_name - company_results_cons: typing.Optional[float]`): Profit before Share of Associates and tax
+- **shares_associate** (`table_name - company_results_cons: typing.Optional[float]`): Share of (loss)/profit in Associates and Joint Ventures
+- **pbt** (`table_name - company_results_cons: typing.Optional[float]`): Profit before tax
+- **tax** (`table_name - company_results_cons: typing.Optional[float]`): Tax
+- **curr_tax** (`table_name - company_results_cons: typing.Optional[float]`): Current Tax
+- **def_tax** (`table_name - company_results_cons: typing.Optional[float]`): Deferred Tax
+- **fringe_benefits** (`table_name - company_results_cons: typing.Optional[float]`): Fringe Benefit Tax
+- **prior_period_tax** (`table_name - company_results_cons: typing.Optional[float]`): Prior Period / Year Tax
+- **mat_credit** (`table_name - company_results_cons: typing.Optional[float]`): MAT Credit
+- **other_tax** (`table_name - company_results_cons: typing.Optional[float]`): Other Tax
+- **pat** (`table_name - company_results_cons: typing.Optional[float]`): Profit after Tax
+- **pbt_disc_operations** (`table_name - company_results_cons: typing.Optional[float]`): Profit before tax from discontinued operations
+- **taxexp_discoperations** (`table_name - company_results_cons: typing.Optional[float]`): Tax expense of discontinued operations
+- **discontinued_op** (`table_name - company_results_cons: typing.Optional[float]`): Profit for the period from discontinued operations
+- **other_related_items** (`table_name - company_results_cons: typing.Optional[float]`): Other related Items
+- **net_profit** (`table_name - company_results_cons: typing.Optional[float]`): Profit for the period
+- **other_compincome** (`table_name - company_results_cons: typing.Optional[float]`): Other Comprehensive Incomes (Net of tax)
+- **items_notclassif_pl** (`table_name - company_results_cons: typing.Optional[float]`): Items that will not be reclassified to profit or loss
+- **it_items_notclassif_pl** (`table_name - company_results_cons: typing.Optional[float]`): Income tax relating to items that will not be reclassified to profit or loss
+- **items_classif_pl** (`table_name - company_results_cons: typing.Optional[float]`): Items that will be reclassified to profit or loss
+- **it_items_classif_pl** (`table_name - company_results_cons: typing.Optional[float]`): Income tax relating to Items that will be reclassified to profit or loss
+- **minint_compincome** (`table_name - company_results_cons: typing.Optional[float]`): Minority Interest Comprehensive Income
+- **othcinc_other** (`table_name - company_results_cons: typing.Optional[float]`): Other
+- **total_compincome** (`table_name - company_results_cons: typing.Optional[float]`): Total Comprehensive Income
+- **netprofit_ownofparent** (`table_name - company_results_cons: typing.Optional[float]`): Net Profit - Owners of the Parent
+- **netprofit_noncontint** (`table_name - company_results_cons: typing.Optional[float]`): Net Profit - Non-controlling interests
+- **other_compinc_ownofparent** (`table_name - company_results_cons: typing.Optional[float]`): Other Comprehensive Income - Owners of the Parent
+- **other_compinc_noncontint** (`table_name - company_results_cons: typing.Optional[float]`): Other Comprehensive Income - Non-controlling interests
+- **totalcompincome_ownofparent** (`table_name - company_results_cons: typing.Optional[float]`): Total Comprehensive Income - Owners of the Parent
+- **minority_interest** (`table_name - company_results_cons: typing.Optional[float]`): Non-controlling interests
+- **equity_cap** (`table_name - company_results_cons: typing.Optional[float]`): Equity Capital
+- **fv** (`table_name - company_results_cons: typing.Optional[float]`): Face Value (In Rs)
+- **reserves** (`table_name - company_results_cons: typing.Optional[float]`): Reserves
+- **epsabs** (`table_name - company_results_cons: typing.Optional[float]`): Calculated EPS (Unit.Curr.)
+- **epsann** (`table_name - company_results_cons: typing.Optional[float]`): Calculated EPS Annualised (Unit.Curr.)
+- **adj_eps_abs** (`table_name - company_results_cons: typing.Optional[float]`): Adj Calculated EPS (Unit.Curr.)
+- **adj_eps_ann** (`table_name - company_results_cons: typing.Optional[float]`): Adj Calculated EPS Annualised (Unit.Curr.)
+- **eps_basic** (`table_name - company_results_cons: typing.Optional[float]`): Basic EPS
+- **eps_diluted_extraord** (`table_name - company_results_cons: typing.Optional[float]`): Diluted EPS
+- **pbidtmexoi** (`table_name - company_results_cons: typing.Optional[float]`): PBIDTM% (Excl OI)
+- **pbidtm** (`table_name - company_results_cons: typing.Optional[float]`): PBIDTM%
+- **pbdtm** (`table_name - company_results_cons: typing.Optional[float]`): PBDTM%
+- **pbtm** (`table_name - company_results_cons: typing.Optional[float]`): PBTM%
+- **patm** (`table_name - company_results_cons: typing.Optional[float]`): PATM%
+- **rev_div_income** (`table_name - company_results_cons: typing.Optional[float]`): Dividend Income
+- **rev_fee_comm** (`table_name - company_results_cons: typing.Optional[float]`): Fees and Commission Income
+- **rev_gain_fairvalue** (`table_name - company_results_cons: typing.Optional[float]`): Gain on Fair value changes
+- **rev_gain_finassets** (`table_name - company_results_cons: typing.Optional[float]`): Gain on de-recognised of Financial Instruments
+- **inc_inv** (`table_name - company_results_cons: typing.Optional[float]`): Profit on sale of Investments
+- **int_bal** (`table_name - company_results_cons: typing.Optional[float]`): Interest on Balances With RBI Other Inter Bank Funds
+- **int_adv** (`table_name - company_results_cons: typing.Optional[float]`): Interest / Discount on Advances / Bills
+- **int_others** (`table_name - company_results_cons: typing.Optional[float]`): Others
+- **operating_ex** (`table_name - company_results_cons: typing.Optional[float]`): Operating Expenses
+- **prov_emp** (`table_name - company_results_cons: typing.Optional[float]`): Payment To Provisions For Employees
+- **other_exp** (`table_name - company_results_cons: typing.Optional[float]`): Other Operating Expenses
+- **operating_profit** (`table_name - company_results_cons: typing.Optional[float]`): Operating Profit before Prov.& Cont.
+- **pac** (`table_name - company_results_cons: typing.Optional[float]`): Provisions and Contingencies
+- **ei** (`table_name - company_results_cons: typing.Optional[float]`): Extraordinary Items
+- **ppi** (`table_name - company_results_cons: typing.Optional[float]`): Prior Period Items
+- **govt_percent_of_shares** (`table_name - company_results_cons: typing.Optional[float]`): % of Shares held by Govt
+- **cap_ratio_percent** (`table_name - company_results_cons: typing.Optional[float]`): Capital Adequacy Ratio Basel II
+- **cap_ratio_percent3** (`table_name - company_results_cons: typing.Optional[float]`): Capital Adequacy Ratio Basel III
+- **tier1basel3** (`table_name - company_results_cons: typing.Optional[float]`): Tier I Basel III
+- **tier2basel3** (`table_name - company_results_cons: typing.Optional[float]`): Tier 2 Basel III
+- **gross_net_npa** (`table_name - company_results_cons: typing.Optional[float]`): Gross / Net NPA
+- **npa_gross** (`table_name - company_results_cons: typing.Optional[float]`): Amount of Gross NPA
+- **npa_net** (`table_name - company_results_cons: typing.Optional[float]`): Amount of Net NPA
+- **perc_gross_net_npa** (`table_name - company_results_cons: typing.Optional[float]`): Percentage of Gross/Net NPA
+- **npa_net_perc** (`table_name - company_results_cons: typing.Optional[float]`): % of Net NPAs
+- **npa_gross_perc** (`table_name - company_results_cons: typing.Optional[float]`): % of Gross NPAs
+- **roa** (`table_name - company_results_cons: typing.Optional[float]`): Return on Assets
+- **prom_no_of_shares** (`table_name - company_results_cons: typing.Optional[float]`): Number of Public Share Holding
+- **prom_percent_of_shares** (`table_name - company_results_cons: typing.Optional[float]`): % of Public Share Holding
+- **eps_basic_extraord** (`table_name - company_results_cons: typing.Optional[float]`): Basic EPS before Extraordinary Items
+- **eps_diluted** (`table_name - company_results_cons: typing.Optional[float]`): Diluted EPS before Extraordinary Items
+- **promoter_nos** (`table_name - company_results_cons: typing.Optional[float]`): Promoters No of Shares
+- **encumbered_nos** (`table_name - company_results_cons: typing.Optional[float]`): Encumbered No of Shares
+- **percentage_pledgedpromoter** (`table_name - company_results_cons: typing.Optional[float]`): Encumbered % of Promoter Holdings
+- **percentage_pledgedcapital** (`table_name - company_results_cons: typing.Optional[float]`): Encumbered % of Share Capital
+- **nonpledgedencum** (`table_name - company_results_cons: typing.Optional[float]`): Non Encumbered
+- **nonpledged_nos** (`table_name - company_results_cons: typing.Optional[float]`): Non Encumbered No of Shares
+- **percentage_nonpledgedpromoter** (`table_name - company_results_cons: typing.Optional[float]`): Non Encumbered % of Promoter Holdings
+- **percentage_nonpledgedcapital** (`table_name - company_results_cons: typing.Optional[float]`): Non Encumbered % of Share Capital
+- **casa** (`table_name - company_results_cons: typing.Optional[float]`): CASA%
+- **casa_amount** (`table_name - company_results_cons: typing.Optional[float]`): CASA Amount
+- **nim** (`table_name - company_results_cons: typing.Optional[float]`): NIM %
+- **gross_profit** (`table_name - company_results_cons: typing.Optional[float]`): Gross Profit
+- **pref_cap** (`table_name - company_results_cons: typing.Optional[float]`): Preference Capital
+- **misc_expd_woff** (`table_name - company_results_cons: typing.Optional[float]`): Misc. Expenses Written off
+- **consolidated_net_profit** (`table_name - company_results_cons: typing.Optional[float]`): Consolidated Net Profit
+- **notes** (`table_name - company_results_cons: typing.Optional[str]`): Note
+- **return_on_capital_employed** (`table_name - company_results_cons: typing.Optional[float]`): Return on Capital Employed
+- **debt_equity_ratio** (`table_name - company_results_cons: typing.Optional[float]`): Debt/Equity Ratio
+- **interest_coverage_ratio** (`table_name - company_results_cons: typing.Optional[float]`): Interest Coverage Ratio
+- **inventory_turnover_ratio** (`table_name - company_results_cons: typing.Optional[float]`): Inventory Turnover Ratio
+- **debtor_turnover_ratio** (`table_name - company_results_cons: typing.Optional[float]`): Debtor Turnover Ratio
+- **dividend_per_share** (`table_name - company_results_cons: typing.Optional[float]`): Dividend per share
+- **dividend_payout_ratio** (`table_name - company_results_cons: typing.Optional[float]`): Dividend payout ratio
+- **other_adjustments** (`table_name - company_results_cons: typing.Optional[float]`): Other Adjustments
+- **pbidtxoi** (`table_name - company_results_cons: typing.Optional[float]`): PBIDT (Excl OI)
+- **operating_profit_margin** (`table_name - company_results_cons: typing.Optional[float]`): Operating Profit Margin
+- **net_profit_margin** (`table_name - company_results_cons: typing.Optional[float]`): Net Profit Margin
+- **cash_bank** (`table_name - company_results_cons: typing.Optional[float]`): Cash and Cash Equivalents
+- **debtors** (`table_name - company_results_cons: typing.Optional[float]`): Debtors
+- **inventory** (`table_name - company_results_cons: typing.Optional[float]`): Inventory
+- **loans_adv** (`table_name - company_results_cons: typing.Optional[float]`): Loans and Advances
+- **ns_grand_total** (`table_name - company_results_cons: typing.Optional[float]`): Number of shares outstanding
+- **ns_totalpublic** (`table_name - company_results_cons: typing.Optional[float]`): nsTotalpublic
+- **tp_totalpublic** (`table_name - company_results_cons: typing.Optional[float]`): tpTotalpublic
+- **provisions_coverage** (`table_name - company_results_cons: typing.Optional[float]`): Provisions Coverage %
+- **no_of_atms** (`table_name - company_results_cons: typing.Optional[float]`): No of ATMs
+- **no_of_branches** (`table_name - company_results_cons: typing.Optional[float]`): No of Branches
+- **tier_i_basel_ii** (`table_name - company_results_cons: typing.Optional[float]`): Tier I Basel II
+- **tier_2_basel_ii** (`table_name - company_results_cons: typing.Optional[float]`): Tier 2 Basel II
+- **no_of_employes** (`table_name - company_results_cons: typing.Optional[float]`): No of Employes
+- **flag** (`table_name - company_results_cons: typing.Optional[str]`): Updation Flag
+
+### Table: `indices_master`
+
+- **index_code** (`table_name - indices_master: <class 'int'>`): Index Code
+- **exchange** (`table_name - indices_master: typing.Optional[str]`): Exchange
+- **index_name** (`table_name - indices_master: typing.Optional[str]`): Index Short Name
+- **index_lname** (`table_name - indices_master: typing.Optional[str]`): Index Long Name
+- **flag** (`table_name - indices_master: typing.Optional[str]`): Updation Flag
+
+### Table: `company_index_part`
+
+- **fincode** (`table_name - company_index_part: <class 'int'>`): AFPL Company Code
+- **scripcode** (`table_name - company_index_part: typing.Optional[int]`): BSE Script Code
+- **symbol** (`table_name - company_index_part: typing.Optional[str]`): NSE Script Code
+- **index_code** (`table_name - company_index_part: typing.Optional[int]`): Index Code
+- **flag** (`table_name - company_index_part: typing.Optional[str]`): Updation Flag
+
+### Table: `bse_indices_price_eod`
+
+- **scripcode** (`table_name - bse_indices_price_eod: <class 'int'>`): Index Scrip Code (refer Indices Master)
+- **date** (`table_name - bse_indices_price_eod: <class 'datetime.datetime'>`): Price Date
+- **open** (`table_name - bse_indices_price_eod: typing.Optional[float]`): Open Price
+- **high** (`table_name - bse_indices_price_eod: typing.Optional[float]`): High Price
+- **low** (`table_name - bse_indices_price_eod: typing.Optional[float]`): Low Price
+- **close** (`table_name - bse_indices_price_eod: typing.Optional[float]`): Close Price
+- **volume** (`table_name - bse_indices_price_eod: typing.Optional[float]`): Volume Traded
+- **value** (`table_name - bse_indices_price_eod: typing.Optional[float]`): Price Traded
+- **flag** (`table_name - bse_indices_price_eod: typing.Optional[str]`): Updation Flag
+
+### Table: `company_shareholding_pattern`
+
+- **fincode** (`table_name - company_shareholding_pattern: <class 'int'>`): Company Code
+- **date_end** (`table_name - company_shareholding_pattern: <class 'int'>`): Sharehoding As on Date
+- **nh_ind_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Individuals / Hindu Undivided Family
+- **ns_ind_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Individuals / Hindu Undivided Family
+- **dp_ind_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Individuals / Hindu Undivided Family
+- **tp_ind_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Individuals / Hindu Undivided Family
+- **nh_ind_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Central Government/State Government(s)
+- **ns_ind_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Central Government/State Government(s)
+- **dp_ind_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Central Government/State Government(s)
+- **tp_ind_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Central Government/State Government(s)
+- **nh_ind_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Bodies Corporate
+- **ns_ind_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Bodies Corporate
+- **dp_ind_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Bodies Corporate
+- **tp_ind_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Bodies Corporate
+- **nh_ind_fi_bankcc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Financial Institutions / Banks
+- **ns_ind_fi_bankcc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Financial Institutions / Banks
+- **dp_ind_fi_bankcc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Financial Institutions / Banks
+- **tp_ind_fi_bankcc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Financial Institutions / Banks
+- **nh_ind_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Other
+- **ns_ind_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Other
+- **dp_ind_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Other
+- **tp_ind_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Other
+- **nh_ind_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Sub Total
+- **ns_ind_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Sub Total
+- **dp_ind_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Sub Total
+- **tp_ind_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Sub Total
+- **nh_f_nri_fn** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Foreign - Non-Residents Individuals / Foreign Individuals
+- **ns_f_nri_fn** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Foreign - Non-Residents Individuals / Foreign Individuals
+- **dp_f_nri_fn** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Foreign - Non-Residents Individuals / Foreign Individuals
+- **tp_f_nri_fn** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Foreign - Non-Residents Individuals / Foreign Individuals
+- **nh_f_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Foreign - Bodies Corporate
+- **ns_f_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Foreign - Bodies Corporate
+- **dp_f_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Foreign - Bodies Corporate
+- **tp_f_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Foreign - Bodies Corporate
+- **nh_f_institution** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Foreign - Institutions
+- **ns_f_institution** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Foreign - Institutions
+- **dp_f_institution** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Foreign - Institutions
+- **tp_f_institution** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Foreign - Institutions
+- **nh_f_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Foreign - Other
+- **ns_f_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Foreign - Other
+- **dp_f_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Foreign - Other
+- **tp_f_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Foreign - Other
+- **nh_f_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Foreign - Sub Total
+- **ns_f_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Foreign - Sub Total
+- **dp_f_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Foreign - Sub Total
+- **tp_f_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Foreign - Sub Total
+- **nh_f_total_promoter** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Total
+- **ns_f_total_promoter** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Total
+- **dp_f_total_promoter** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Total
+- **tp_f_total_promoter** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Total
+- **nh_in_mf_uti** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Mutual Funds / UTI
+- **ns_in_mf_uti** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Mutual Funds / UTI
+- **dp_in_mf_uti** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Mutual Funds / UTI
+- **tp_in_mf_uti** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Mutual Funds / UTI
+- **nh_in_fi_banks** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Financial Institutions / Banks
+- **ns_in_fi_banks** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Financial Institutions / Banks
+- **dp_in_fi_banks** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Financial Institutions / Banks
+- **tp_in_fi_banks** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Financial Institutions / Banks
+- **nh_in_insurance** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Insurance Companies
+- **ns_in_insurance** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Insurance Companies
+- **dp_in_insurance** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Insurance Companies
+- **tp_in_insurance** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Insurance Companies
+- **nh_in_fii** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Foreign Institutional Investors
+- **ns_in_fii** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Foreign Institutional Investors
+- **dp_in_fii** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Foreign Institutional Investors
+- **tp_in_fii** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Foreign Institutional Investors
+- **nh_in_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Venture Capital Funds
+- **ns_in_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Venture Capital Funds
+- **dp_in_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Venture Capital Funds
+- **tp_in_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Venture Capital Funds
+- **nh_in_for_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Foreign Venture Capital Investors
+- **ns_in_for_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Foreign Venture Capital Investors
+- **dp_in_for_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Foreign Venture Capital Investors
+- **tp_in_for_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Foreign Venture Capital Investors
+- **nh_in_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Central Government / State Government(s)
+- **dp_in_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Central Government / State Government(s)
+- **tp_in_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Central Government / State Government(s)
+- **nh_in_for_fin_ins** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Foreign Financial Institutions / Banks
+- **ns_in_for_fin_ins** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Foreign Financial Institutions / Banks
+- **dp_in_for_fin_ins** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Foreign Financial Institutions / Banks
+- **tp_in_for_fin_ins** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Foreign Financial Institutions / Banks
+- **nh_in_state_fin_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - State Finance Corporation
+- **ns_in_state_fin_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - State Finance Corporation
+- **dp_in_state_fin_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - State Finance Corporation
+- **tp_in_state_fin_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - State Finance Corporation
+- **nh_in_for_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Foreign Bodies DR
+- **ns_in_for_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Foreign Bodies DR
+- **dp_in_for_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Foreign Bodies DR
+- **tp_in_for_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Foreign Bodies DR
+- **nh_in_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Other
+- **ns_in_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Other
+- **dp_in_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Other
+- **tp_in_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Other
+- **nh_in_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Sub Total
+- **ns_in_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Sub Total
+- **dp_in_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Sub Total
+- **tp_in_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Sub Total
+- **nh_nin_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Bodies Corporate
+- **ns_nin_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Bodies Corporate
+- **dp_nin_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Bodies Corporate
+- **tp_nin_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Bodies Corporate
+- **nh_nin_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Individuals
+- **ns_nin_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Individuals
+- **dp_nin_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Individuals
+- **tp_nin_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Individuals
+- **nh_nin_indivd_1lac** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Individual shareholders holding nominal share capital up to Rs. 1 lakh
+- **ns_nin_indivd_1lac** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Individual shareholders holding nominal share capital up to Rs. 1 lakh
+- **dp_nin_indivd_1lac** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Individual shareholders holding nominal share capital up to Rs. 1 lakh
+- **tp_nin_indivd_1lac** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Individual shareholders holding nominal share capital up to Rs. 1 lakh
+- **nh_nin_indivd_1lacmore** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Individual shareholders holding nominal share capital in excess of Rs. 1 lakh
+- **ns_nin_indivd_1lacmore** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares -Public - Non-Institutions - Individual shareholders holding nominal share capital in excess of Rs. 1 lakh
+- **dp_nin_indivd_1lacmore** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Individual shareholders holding nominal share capital in excess of Rs. 1 lakh
+- **tp_nin_indivd_1lacmore** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Individual shareholders holding nominal share capital in excess of Rs. 1 lakh
+- **nh_nin_clear_memb** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Clearing Members
+- **ns_nin_clear_memb** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Clearing Members
+- **dp_nin_clear_memb** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Clearing Members
+- **tp_nin_clear_memb** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Clearing Members
+- **nh_nin_nri** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Non Resident Indians
+- **ns_nin_nri** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Non Resident Indians
+- **dp_nin_nri** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Non Resident Indians
+- **tp_nin_nri** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Non Resident Indians
+- **nh_nin_director** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehodreflectors - Public - Non-Institutions - Directors & their Relatives & Friends
+- **ns_nin_director** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Directors & their Relatives & Friends
+- **dp_nin_director** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Directors & their Relatives & Friends
+- **tp_nin_director** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Directors & their Relatives & Friends
+- **nh_nin_forn_coll** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Foreign Collaborators
+- **ns_nin_forn_coll** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Foreign Collaborators
+- **dp_nin_forn_coll** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Foreign Collaborators
+- **tp_nin_forn_coll** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Foreign Collaborators
+- **nh_nin_forn_mf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Foreign Mutual Fund
+- **ns_nin_forn_mf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Foreign Mutual Fund
+- **dp_nin_forn_mf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Foreign Mutual Fund
+- **tp_nin_forn_mf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Foreign Mutual Fund
+- **nh_nin_trusts** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Trusts
+- **ns_nin_trusts** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Trusts
+- **dp_nin_trusts** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Trusts
+- **tp_nin_trusts** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Trusts
+- **nh_nin_huf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Hindu Undivided Families
+- **ns_nin_huf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Hindu Undivided Families
+- **dp_nin_huf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Hindu Undivided Families
+- **tp_nin_huf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Hindu Undivided Families
+- **nh_nin_forn_corp_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Foreign Corporate Bodies
+- **ns_nin_forn_corp_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Foreign Corporate Bodies
+- **dp_nin_forn_corp_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Foreign Corporate Bodies
+- **tp_nin_forn_corp_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Foreign Corporate Bodies
+- **nh_nin_share_intransit** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Shares in transit
+- **ns_nin_share_intransit** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Shares in transit
+- **dp_nin_share_intransit** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Shares in transit
+- **tp_nin_share_intransit** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Shares in transit
+- **nh_nin_mkt_maker** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Market Maker
+- **ns_nin_mkt_maker** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Market Maker
+- **dp_nin_mkt_maker** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Market Maker
+- **tp_nin_mkt_maker** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Market Maker
+- **nh_nin_employees** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - ESOP/ESOS/ESPS
+- **ns_nin_employees** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - ESOP/ESOS/ESPS
+- **dp_nin_employees** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - ESOP/ESOS/ESPS
+- **tp_nin_employees** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - ESOP/ESOS/ESPS
+- **nh_nin_society** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Societies
+- **ns_nin_society** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Societies
+- **dp_nin_society** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Societies
+- **tp_nin_society** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Societies
+- **nh_nin_escrow** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Escrow Account
+- **ns_nin_escrow** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Escrow Account
+- **dp_nin_escrow** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Escrow Account
+- **tp_nin_escrow** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Escrow Account
+- **nh_nin_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Any Other
+- **ns_nin_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Any Other
+- **dp_nin_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Any Other
+- **tp_nin_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Any Other
+- **nh_nin_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Sub Total
+- **ns_nin_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Sub Total
+- **dp_nin_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Sub Total
+- **tp_nin_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Sub Total
+- **nh_total_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Total
+- **ns_total_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Total
+- **dp_total_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Total
+- **tp_total_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Total
+- **nh_total_prom_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Total Promoter & Publics
+- **ns_total_prom_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Total Promoter & Publics
+- **dp_total_prom_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Total Promoter & Publics
+- **tp_total_prom_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Total Promoter & Publics
+- **nh_custodian_drs** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Custodians
+- **ns_custodian_drs** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Custodians
+- **dp_custodian_drs** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Custodians
+- **tp_custodian_drs** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Custodians
+- **nh_adr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Custodians - American Depository Receipts
+- **ns_adr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Custodians - American Depository Receipts
+- **dp_adr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Custodians - American Depository Receipts
+- **tp_adr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Custodians - American Depository Receipts
+- **nh_gdr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Custodians - GDRs
+- **ns_gdr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Custodians - GDRs
+- **dp_gdr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Custodians - GDRs
+- **tp_gdr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Custodians - GDRs
+- **nh_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Custodians - Other
+- **ns_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Custodians - Other
+- **dp_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Custodians - Other
+- **tp_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Custodians - Other
+- **nh_grand_total** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Grand Total
+- **ns_grand_total** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Grand Total
+- **dp_grand_total** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Grand Total
+- **tp_grand_total** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Grand Total
+- **nh_other_prt_firms** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Partnership Firms
+- **ns_other_prt_firms** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Partnership Firms
+- **dp_other_prt_firms** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Partnership Firms
+- **tp_other_prt_firms** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Partnership Firms
+- **nh_other_prom_group** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Promoter Group
+- **ns_other_prom_group** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Promoter Group
+- **dp_other_prom_group** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Promoter Group
+- **tp_other_prom_group** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Promoter Group
+- **nh_other_ewf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Employees Welfare Fund
+- **ns_other_ewf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Employees Welfare Fund
+- **dp_other_ewf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Employees Welfare Fund
+- **tp_other_ewf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Employees Welfare Fund
+- **nh_sasf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Stressed Assets Stabilisation Fund
+- **ns_sasf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Stressed Assets Stabilisation Fund
+- **dp_sasf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Stressed Assets Stabilisation Fund
+- **tp_sasf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Stressed Assets Stabilisation Fund
+- **nh_ind_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Indian - Any Other
+- **nh_in_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Any Other
+- **ns_in_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Any Other
+- **dp_in_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Any Other
+- **tp_in_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Any Other
+- **nh_nin_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Any Other
+- **ns_nin_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Any Other
+- **dp_nin_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Any Other
+- **tp_nin_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Any Other
+- **nh_f_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Promoter - Foreign - Any Other
+- **ns_f_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Foreign - Any Other
+- **dp_f_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Foreign - Any Other
+- **tp_f_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Foreign - Any Other
+- **ns_ind_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Promoter - Indian - Any Other
+- **dp_ind_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Promoter - Indian - Any Other
+- **tp_ind_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Promoter - Indian - Any Other
+- **nsh_ind_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Indian Promoters
+- **nsh_ind_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individuals / Hindu Undivided Family
+- **nsh_ind_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Central Government/State Government(s)
+- **nsh_ind_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Bodies Corporate
+- **nsh_ind_fi_bankcc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Financial Institutions / Banks
+- **nsh_other_prt_firms** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Partnership Firms
+- **nsh_other_prom_group** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Promoter Group
+- **nsh_other_ewf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Employees Welfare Fund
+- **nsh_ind_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other
+- **nsh_ind_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify)
+- **nsh_f_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Promoters
+- **nsh_f_nri_fn** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Non-Residents Individuals / Foreign Individuals
+- **nsh_f_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Bodies Corporate
+- **nsh_f_institution** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Institutions
+- **nsh_f_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other
+- **nsh_f_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify)
+- **nsh_f_total_promoter** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Total of Promoter and Promoter Group
+- **nsh_in_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Institutions
+- **nsh_in_mf_uti** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Mutual Funds / UTI
+- **nsh_in_fi_banks** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Financial Institutions / Banks
+- **nsh_in_insurance** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Insurance Companies
+- **nsh_in_fii** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Institutional Investors
+- **nsh_in_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Venture Capital Funds
+- **nsh_in_for_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Venture Capital Investors
+- **nsh_in_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify)
+- **nsh_in_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Central Government / State Government(s)
+- **nsh_in_for_fin_ins** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Financial Institutions / Banks
+- **nsh_sasf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Stressed Assets Stabilisation Fund
+- **nsh_in_state_fin_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): State Finance Corporation
+- **nsh_in_for_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Bodies DR
+- **nsh_in_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other
+- **nsh_nin_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Non-Institutions
+- **nsh_nin_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Bodies Corporate
+- **nsh_nin_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individuals
+- **nsh_nin_indivd_1lac** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individual shareholders holding nominal share capital up to Rs. 1 lakh
+- **nsh_nin_indivd_1lacmore** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individual shareholders holding nominal share capital in excess of Rs. 1 lakh
+- **nsh_nin_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify)
+- **nsh_nin_clear_memb** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Clearing Members
+- **nsh_nin_nri** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Non Resident Indians
+- **nsh_nin_director** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Directors & their Relatives & Friends
+- **nsh_nin_forn_coll** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Collaborators
+- **nsh_nin_forn_mf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Mutual Fund
+- **nsh_nin_trusts** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Trusts
+- **nsh_nin_huf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Hindu Undivided Families
+- **nsh_nin_forn_corp_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Corporate Bodies
+- **nsh_nin_share_intransit** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Shares in transit
+- **nsh_nin_mkt_maker** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Market Maker
+- **nsh_nin_employees** (`table_name - company_shareholding_pattern: typing.Optional[float]`): ESOP/ESOS/ESPS
+- **nsh_nin_society** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Societies
+- **nsh_nin_escrow** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Escrow Account
+- **nsh_nin_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Other
+- **nsh_total_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Total Public Shareholding
+- **nsh_total_prom_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Total of Promoter and Public Shareholding
+- **nsh_custodian_drs** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Shares held by Custodians and against which Depository Receipts have been issued
+- **nsh_adr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): ADRs
+- **nsh_gdr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): GDRs
+- **nsh_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other
+- **nsh_grand_total** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Grand Total
+- **psh_ind_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Indian Promoters %
+- **psh_ind_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individuals / Hindu Undivided Family %
+- **psh_ind_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Central Government/State Government(s) %
+- **psh_ind_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Bodies Corporate %
+- **psh_ind_fi_bankcc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Financial Institutions / Banks %
+- **psh_other_prt_firms** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Partnership Firms %
+- **psh_other_prom_group** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Promoter Group %
+- **psh_other_ewf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Employees Welfare Fund %
+- **psh_ind_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other %
+- **psh_ind_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify) %
+- **psh_f_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Promoters %
+- **psh_f_nri_fn** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Non-Residents Individuals / Foreign Individuals %
+- **psh_f_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Bodies Corporate %
+- **psh_f_institution** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Institutions %
+- **psh_f_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other %
+- **psh_f_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify) %
+- **psh_f_total_promoter** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Total of Promoter and Promoter Group %
+- **psh_in_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Institutions %
+- **psh_in_mf_uti** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Mutual Funds / UTI %
+- **psh_in_fi_banks** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Financial Institutions / Banks %
+- **psh_in_insurance** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Insurance Companies %
+- **psh_in_fii** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Institutional Investors %
+- **psh_in_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Venture Capital Funds %
+- **psh_in_for_ven_cap** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Venture Capital Investors %
+- **psh_in_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify) %
+- **psh_in_cgovt** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Central Government / State Government(s) %
+- **psh_in_for_fin_ins** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Financial Institutions / Banks %
+- **psh_sasf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Stressed Assets Stabilisation Fund %
+- **psh_in_state_fin_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): State Finance Corporation %
+- **psh_in_for_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Bodies DR %
+- **psh_in_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other %
+- **psh_nin_subtotal** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Non-Institutions %
+- **psh_nin_body_corp** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Bodies Corporate %
+- **psh_nin_indivd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individuals %
+- **psh_nin_indivd_1lac** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individual shareholders holding nominal share capital up to Rs. 1 lakh %
+- **psh_nin_indivd_1lacmore** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Individual shareholders holding nominal share capital in excess of Rs. 1 lakh %
+- **psh_nin_any_other_specfd** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Others (Specify) %
+- **psh_nin_clear_memb** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Clearing Members %
+- **psh_nin_nri** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Non Resident Indians %
+- **psh_nin_director** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Directors & their Relatives & Friends %
+- **psh_nin_forn_coll** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Collaborators %
+- **psh_nin_forn_mf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Mutual Fund %
+- **psh_nin_trusts** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Trusts %
+- **psh_nin_huf** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Hindu Undivided Families %
+- **psh_nin_forn_corp_body** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Foreign Corporate Bodies %
+- **psh_nin_share_intransit** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Shares in transit %
+- **psh_nin_mkt_maker** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Market Maker %
+- **psh_nin_employees** (`table_name - company_shareholding_pattern: typing.Optional[float]`): ESOP/ESOS/ESPS %
+- **psh_nin_society** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Societies %
+- **psh_nin_escrow** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Escrow Account %
+- **psh_nin_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Any Other %
+- **psh_total_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Total Public Shareholding %
+- **psh_total_prom_public** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Total of Promoter and Public Shareholding %
+- **psh_custodian_drs** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Shares held by Custodians and against which Depository Receipts have been issued %
+- **psh_adr** (`table_name - company_shareholding_pattern: typing.Optional[float]`): ADRs %
+- **psh_other** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Other %
+- **psh_grand_total** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Grand Total %
+- **nh_in_alt_inv_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Alternate Investment Funds
+- **ns_in_alt_inv_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Alternate Investment Funds
+- **dp_in_alt_inv_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Alternate Investment Funds
+- **tp_in_alt_inv_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Alternate Investment Funds
+- **nh_in_foreign_port_inv** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Foreign Portfolio Investors
+- **ns_in_foreign_port_inv** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Foreign Portfolio Investors
+- **dp_in_foreign_port_inv** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Foreign Portfolio Investors
+- **tp_in_foreign_port_inv** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Foreign Portfolio Investors
+- **nh_in_provi_pen_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Institutions - Provident Funds/ Pension Funds
+- **ns_in_provi_pen_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Institutions - Provident Funds/ Pension Funds
+- **dp_in_provi_pen_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Institutions - Provident Funds/ Pension Funds
+- **tp_in_provi_pen_fund** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Institutions - Provident Funds/ Pension Funds
+- **nh_nin_indivd_nbfc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - NBFCs registered with RBI
+- **ns_nin_indivd_nbfc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - NBFCs registered with RBI
+- **dp_nin_indivd_nbfc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - NBFCs registered with RBI
+- **tp_nin_indivd_nbfc** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - NBFCs registered with RBI
+- **nh_nin_ind_emp_trust** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Sharehoders - Public - Non-Institutions - Employee Trusts
+- **ns_nin_ind_emp_trust** (`table_name - company_shareholding_pattern: typing.Optional[float]`): No of Shares - Public - Non-Institutions - Employee Trusts
+- **dp_nin_ind_emp_trust** (`table_name - company_shareholding_pattern: typing.Optional[float]`): Demat - Public - Non-Institutions - Employee Trusts
+- **tp_nin_ind_emp_trust** (`table_name - company_shareholding_pattern: typing.Optional[float]`): % - Public - Non-Institutions - Employee Trusts
+- **flag** (`table_name - company_shareholding_pattern: typing.Optional[str]`): Updation Flag
+
+### Table: `bse_abjusted_price_eod`
+
+- **fincode** (`table_name - bse_abjusted_price_eod: <class 'int'>`): AFPL Company Code
+- **scripcode** (`table_name - bse_abjusted_price_eod: typing.Optional[int]`): BSE Scrip Code
+- **date** (`table_name - bse_abjusted_price_eod: <class 'datetime.datetime'>`): Price Date
+- **open** (`table_name - bse_abjusted_price_eod: typing.Optional[float]`): Adjusted Open Price
+- **high** (`table_name - bse_abjusted_price_eod: typing.Optional[float]`): Adjusted High Price
+- **low** (`table_name - bse_abjusted_price_eod: typing.Optional[float]`): Adjusted Low Price
+- **close** (`table_name - bse_abjusted_price_eod: typing.Optional[float]`): Adjusted Close Price
+- **volume** (`table_name - bse_abjusted_price_eod: typing.Optional[float]`): Volume Traded
+- **value** (`table_name - bse_abjusted_price_eod: typing.Optional[float]`): Value Traded
+- **flag** (`table_name - bse_abjusted_price_eod: typing.Optional[str]`): Updation Flag
+
+### Table: `company_profile`
+
+#### description : ``
+
+- **fincode** (`table_name - company_profile: <class 'int'>`): AFPL Company Code
+- **details** (`table_name - company_profile: typing.Optional[str]`): Company Description
+- **flag** (`table_name - company_profile: typing.Optional[str]`): Updation Flag

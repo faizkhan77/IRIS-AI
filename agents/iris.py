@@ -1,320 +1,279 @@
+# iris.py
 import os
 import json
 import uuid
 from typing import TypedDict, Annotated, List as TypingList, Dict, Any, Optional
 
 from dotenv import load_dotenv
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage # SystemMessage removed (not directly used by nodes)
 from pydantic import BaseModel, Field 
 from langgraph.graph import StateGraph, END, START
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite import SqliteSaver # For persistent STM
 
-
-# Import LLM
 from model_config import groq_llm
-
-# Import sub-agent apps
+# Import sub-agent apps - ensure these are the corrected versions
 from .fundamentals_agent import app as fundamentals_app_instance
 from .sentiment_agent import app as sentiment_app_instance
 from .technicals_agent import app as technical_app_instance
-
-# Import LTM database module
-import db_ltm # Our new module
-
+import db_ltm
 
 load_dotenv()
 
-# --- Pydantic Models for Structured LLM Outputs (SupervisorDecision remains largely the same) ---
+# --- Pydantic Models for Structured LLM Outputs ---
 class SupervisorDecision(BaseModel):
-    route: Annotated[str, Field(description="Next step: 'fundamentals', 'sentiment', 'technicals', 'direct_iris_answer', or 'clarify_with_user'.")]
+    route: Annotated[str, Field(description="Next step. Choose ONE from: 'fundamentals', 'sentiment', 'technicals', 'in_domain_general', 'out_of_domain', 'clarify_with_user', 'load_ltm_and_respond', 'update_ltm_and_respond'.")]
     reasoning: Annotated[str, Field(description="Brief reasoning for the chosen route.")]
-    # LTM updates are now more structured:
-    # `new_facts_for_ltm` will store explicit "remember this fact" type statements.
-    # `profile_updates_for_ltm` will store key-value preference updates.
-    new_facts_for_ltm: Annotated[Optional[TypingList[str]], Field(description="List of new EXPLICIT facts user asked to remember (e.g., 'Remember I like apples').")] = None
-    profile_updates_for_ltm: Annotated[Optional[Dict[str, Any]], Field(description="Dictionary of user profile/preference updates (e.g., {'favorite_color': 'blue', 'risk_tolerance': 'high'}).")] = None
-    parameters_for_subagent: Annotated[Optional[Dict[str, Any]], Field(description="Parameters to pass to the sub-agent, typically {'question': user_input}.")] = None
-    direct_iris_response_content: Annotated[Optional[str], Field(description="Content for IRIS's direct response or clarification question if route is 'direct_iris_answer' or 'clarify_with_user'.")] = None
-
+    
+    ltm_operation_needed: Optional[str] = Field(None, description="'load' if LTM data needs to be recalled for the current query, 'update' if user wants to store/modify LTM data. Null otherwise.")
+    new_facts_for_ltm: Optional[TypingList[str]] = Field(None, description="List of new EXPLICIT facts user asked to remember (e.g., 'Remember I like apples'). Only if ltm_operation_needed is 'update'.")
+    profile_updates_for_ltm: Optional[Dict[str, Any]] = Field(None, description="Dictionary of user profile/preference updates (e.g., {'favorite_stock': 'AAPL'}). Only if ltm_operation_needed is 'update'.")
+    
+    parameters_for_subagent: Optional[Dict[str, Any]] = Field(None, description="Parameters for sub-agent. For fundamentals/technicals: {'question': user_input}. For sentiment: {'query': user_input}. Null if not routing to a sub-agent.")
+    direct_iris_response_content: Optional[str] = Field(None, description="Content for IRIS's direct response (general, OOD, LTM confirmation) or clarification question. Null if routing to a sub-agent that will generate the response.")
 
 # --- IRIS Agent State ---
 class IrisState(TypedDict):
-    # Identifiers
-    user_identifier: str # e.g., email or unique username provided at input
-    langgraph_thread_id: str # LangGraph's session/thread ID
-
-    # LTM Database IDs (populated after initialization)
-    db_user_id: Optional[int]
-    db_session_id: Optional[int] # MySQL PK for the 'sessions' table
-
-    # User's current input for this turn
-    user_input: str
+    user_identifier: str
+    langgraph_thread_id: str # For LangGraph's checkpointer
     
-    # Short-Term Memory (managed by LangGraph checkpointer)
-    chat_history: Annotated[TypingList[BaseMessage], lambda x, y: x + y]
+    db_user_id: Optional[int] # LTM User ID
+    db_session_id: Optional[int] # LTM Session ID
 
-    # Long-Term Memory (loaded from DB)
-    # This will hold preferences and facts fetched from db_ltm.user_preferences
-    ltm_preferences: Dict[str, Any]
+    user_input: str # Current user message
+    chat_history: Annotated[TypingList[BaseMessage], lambda x, y: x + y] # STM (managed by checkpointer)
+    
+    # LTM data, loaded conditionally
+    ltm_preferences: Optional[Dict[str, Any]] 
+    # To track if LTM was loaded in the current interaction path for supervisor re-evaluation
+    ltm_loaded_this_turn: bool 
 
-    # Supervisor's decision and intermediate results
     supervisor_decision_output: Optional[SupervisorDecision]
-    intermediate_response: Optional[str]
+    intermediate_response: Optional[str] # From sub-agents or direct Iris actions before finalization
     
-    # Final output
-    final_response: str
+    # For HITL: stores the clarification question if IRIS needs more info
+    clarification_question_to_user: Optional[str]
+    final_response: str # The actual response sent to the user for the current turn
+
 
 # --- IRIS Agent Nodes ---
 
-def initialize_session_and_ltm_ids_node(state: IrisState):
-    """
-    Initializes session, gets/creates user in LTM, gets/creates LTM session.
-    This node now handles the LTM user and session ID setup.
-    """
-    print("---NODE: Initialize Session & LTM IDs---")
-    user_identifier = state["user_identifier"] # e.g. "test_user_001@example.com"
-    langgraph_thread_id = state["langgraph_thread_id"] # LangGraph's own session ID
+def initialize_session_node(state: IrisState):
+    """Initializes LTM user/session IDs and resets turn-specific state,
+       BUT PRESERVES the chat_history loaded by the checkpointer."""
+    print("---NODE: Initialize Session & LTM IDs (IRIS)---")
+    user_identifier = state["user_identifier"]
+    langgraph_thread_id = state["langgraph_thread_id"]
 
-    # Get or create user in LTM and get their DB ID
     db_user_id = db_ltm.get_or_create_user(user_identifier)
-    
-    # Get or create LTM session (linked to user and LangGraph thread_id) and get its DB ID
     db_session_id = db_ltm.get_or_create_session(db_user_id, langgraph_thread_id)
 
     print(f"LTM User ID: {db_user_id} for identifier: {user_identifier}")
     print(f"LTM Session ID: {db_session_id} for LangGraph Thread: {langgraph_thread_id}")
     
-    # Ensure chat_history is initialized if this is the first interaction in the LangGraph thread
+    # *** THE KEY FIX IS HERE ***
+    # Get the chat history that was passed into the state by the checkpointer.
+    # If it's the very first run, this will be an empty list provided by main.py's initial state.
+    # On subsequent runs for the same thread, this will be the populated list.
     current_chat_history = state.get("chat_history", [])
-    if not current_chat_history:
-         # Optional: Load chat history from LTM for this session if desired for the *very first* prompt to supervisor
-         # For now, LangGraph's checkpointer will handle STM continuity.
-         # LTM chat_logs are primarily for UI display and long-term archival.
-        pass
 
+    # Return a dictionary that includes the preserved chat_history along with other setup values.
+    # This ensures we don't wipe the STM at the start of each turn.
     return {
         "db_user_id": db_user_id,
         "db_session_id": db_session_id,
-        "chat_history": current_chat_history,
+        "chat_history": current_chat_history, # ** PRESERVE THE HISTORY **
+        "ltm_preferences": None,
+        "ltm_loaded_this_turn": False,
+        "clarification_question_to_user": None,
+        "intermediate_response": None,
+        "supervisor_decision_output": None
     }
 
-def load_ltm_preferences_node(state: IrisState):
-    """Loads Long-Term Memory (preferences) for the current user from MySQL."""
-    print("---NODE: Load LTM Preferences---")
-    db_user_id = state["db_user_id"]
-    if not db_user_id:
-        print("Error: db_user_id not found in state. Cannot load LTM preferences.")
-        return {"ltm_preferences": {}}
-
-    preferences = db_ltm.get_user_preferences(db_user_id)
-    print(f"LTM Preferences loaded for user {db_user_id}: {json.dumps(preferences, indent=2)[:300]}...")
-    return {"ltm_preferences": preferences}
-
-
-
 SUPERVISOR_PROMPT_TEMPLATE = """
-You are IRIS, a sophisticated AI assistant for stock analysis.
-Your goal is to understand the user's query, leverage conversation history and long-term memory (preferences & facts),
-and decide the best course of action. You also need to identify information to be stored in Long-Term Memory.
+    You are IRIS, a sophisticated AI assistant for stock analysis. Your primary goal is to determine the best course of action based on the user's query and the conversation history.
 
-User Identifier (LTM): {user_identifier} (DB User ID: {db_user_id})
+    --- Your Thought Process ---
+    1.  **Synthesize Context**: First, analyze the user's latest message (`user_input`) in the context of the `chat_history`. If the `user_input` is a direct answer to your last question, combine them to form a complete, coherent query.
+    2.  **Decide Action**: Based on the synthesized query, decide the best course of action by determining `ltm_operation_needed` and `route`.
+    3.  **Format Output**: If routing to a sub-agent, set `parameters_for_subagent` using the full, synthesized query. If providing a direct answer or clarification, set `direct_iris_response_content`.
 
-Conversation History (Short-Term Memory):
-{chat_history_formatted}
+    --- Conversation History (Short-Term Memory) ---
+    {chat_history_formatted}
 
-User's Long-Term Memory (loaded from database):
-Preferences & Facts: {ltm_preferences_formatted}
+    --- User's Long-Term Memory (if loaded for this turn) ---
+    {ltm_preferences_formatted}
 
-User's Current Query: "{user_input}"
+    --- Routing Definitions (`route`) ---
+    - 'update_ltm_and_respond': If user EXPLICITLY asks to remember/store info.
+    - 'load_ltm_and_respond': If user asks to recall stored info.
+    - 'clarify_with_user': If the synthesized query is still too vague (e.g., "tell me about Adani").
+    - 'out_of_domain': For questions clearly unrelated to finance, stocks, or your capabilities.
+    - 'in_domain_general': For greetings or simple financial questions you can answer directly.
+    - 'fundamentals': For queries about company financials, ratios, valuation.
+    - 'sentiment': For market mood, news sentiment, analyst targets.
+    - 'technicals': For chart patterns, technical indicators (RSI, MACD), price/volume trends.
 
---- Definitions for Routing ---
--   **Fundamental Data Query**: Relates to a company's financial health, performance, and intrinsic value. This includes:
-    -   Financial statements (e.g., balance sheets, income statements, cash flow statements).
-    -   Financial ratios (e.g., P/E ratio, ROE, Debt-to-Equity, EPS, Book Value).
-    -   Valuation metrics (e.g., Market Capitalization / Market Cap).
-    -   Company structure and details (e.g., shareholding patterns, promoter holding, dividends).
-    -   Company events impacting financials (e.g., bonuses, splits).
-    If the user asks for any of these for a specific company, route to 'fundamentals'.
+    --- LTM Operations (`ltm_operation_needed`) ---
+    - 'update': If the route is 'update_ltm_and_respond'. Populate `new_facts_for_ltm` or `profile_updates_for_ltm`.
+    - 'load': If the route is 'load_ltm_and_respond'.
+    - null: For all other routes.
 
--   **Sentiment Query**: Relates to market mood, news analysis, public opinion, or price targets based on analyst sentiment for a stock. Route to 'sentiment'.
+    --- EXAMPLES ---
 
--   **Technical Indicator Query**: Relates to chart patterns, price/volume trends, and calculations like RSI, MACD, Moving Averages, Bollinger Bands, VWAP, ATR, Supertrend for a stock. Route to 'technicals'.
+    Example 1: Clarification Loop (THIS IS THE KEY NEW EXAMPLE)
+    (Previous History in prompt: HUMAN: "what is the market cap?", AI: "For which company?")
+    Current Query: "Reliance Industries"
+    Output:
+    {{
+    "route": "fundamentals",
+    "reasoning": "The user provided the company name 'Reliance Industries' in response to my clarification question. The combined query is now 'What is the market cap of Reliance Industries?', which is a fundamentals question.",
+    "ltm_operation_needed": null,
+    "new_facts_for_ltm": null,
+    "profile_updates_for_ltm": null,
+    "parameters_for_subagent": {{"question": "What is the market cap of Reliance Industries?"}},
+    "direct_iris_response_content": null
+    }}
 
--   **Direct IRIS Answer**: For general greetings, simple clarifications IRIS can handle directly, or when the user explicitly asks IRIS to remember something not covered by other agents.
+    Example 2: LTM Update
+    Current Query: "Remember my favorite stock is MSFT and I like blue chip stocks."
+    Output:
+    {{
+    "route": "update_ltm_and_respond", "reasoning": "User wants to store favorite stock and preference.",
+    "ltm_operation_needed": "update",
+    "new_facts_for_ltm": ["Likes blue chip stocks"], "profile_updates_for_ltm": {{"favorite_stock": "MSFT"}},
+    "parameters_for_subagent": null,
+    "direct_iris_response_content": "Okay, I've noted that your favorite stock is MSFT and you like blue chip stocks."
+    }}
 
--   **Clarify with User**: If the query is ambiguous, lacks necessary detail for other agents, or if IRIS is unsure.
---- End of Definitions ---
+    Example 3: LTM Load
+    Current Query: "What was my favorite stock?"
+    Output:
+    {{
+    "route": "load_ltm_and_respond", "reasoning": "User is asking to recall LTM data. The system needs to load it first.",
+    "ltm_operation_needed": "load",
+    "new_facts_for_ltm": null, "profile_updates_for_ltm": null,
+    "parameters_for_subagent": null,
+    "direct_iris_response_content": null
+    }}
 
-Based on all the above, make a decision.
-You MUST respond with a single, valid JSON object that strictly adheres to the following Pydantic schema for 'SupervisorDecision'.
-Do NOT include any other text, explanations, or markdown formatting around the JSON object.
+    --- CURRENT TASK ---
+    User Identifier (LTM): {user_identifier} (DB User ID: {db_user_id})
+    Current User Input: "{user_input}"
+    Your output MUST be a single, valid JSON object matching the 'SupervisorDecision' schema. NO OTHER TEXT.
 
-Pydantic Schema for SupervisorDecision:
-{{
-  "route": "string (Next step: 'fundamentals', 'sentiment', 'technicals', 'direct_iris_answer', or 'clarify_with_user')",
-  "reasoning": "string (Brief reasoning for the chosen route)",
-  "new_facts_for_ltm": "Optional[List[string]] (List of new EXPLICIT facts user asked to remember. Null if none.)",
-  "profile_updates_for_ltm": "Optional[Dict[string, Any]] (Dictionary of user profile/preference updates. Null if none.)",
-  "parameters_for_subagent": "Optional[Dict[string, Any]] (Parameters for the sub-agent. IMPORTANT: If routing to 'sentiment', this MUST be `{{\\"query\\": \\"original user question\\"}}`. If routing to 'technicals' or 'fundamentals', this MUST be `{{\\"question\\": \\"original user question\\"}}`. Null if not routing.)",
-  "direct_iris_response_content": "Optional[string] (Content for IRIS's direct response or clarification. Null if routing to sub-agent.)"
-}}
-
-
-Example for routing to sentiment agent (ensure your output is ONLY the JSON part):
-{{
-  "route": "sentiment",
-  "reasoning": "User is asking about market sentiment for a stock.",
-  "new_facts_for_ltm": null,
-  "profile_updates_for_ltm": null,
-  "parameters_for_subagent": {{ "query": "{user_input}" }}, # Corrected key to "query"
-  "direct_iris_response_content": null
-}}
-
-Example for routing to technicals agent:
-{{
-  "route": "technicals",
-  "reasoning": "User is asking for a technical indicator.",
-  "new_facts_for_ltm": null,
-  "profile_updates_for_ltm": null,
-  "parameters_for_subagent": {{ "question": "{user_input}" }}, # Use "question" key
-  "direct_iris_response_content": null
-}}
-
-
-Think step-by-step to arrive at the values for the JSON fields:
-1.  Analyze query: {user_input}
-2.  Consider history and LTM.
-3.  Determine intent for 'route'.
-4.  If routing, set 'parameters_for_subagent'.
-5.  If direct/clarify, set 'direct_iris_response_content'.
-6.  Identify LTM updates for 'new_facts_for_ltm' and 'profile_updates_for_ltm'.
-
-Now, provide ONLY the JSON object for the query: "{user_input}"
+    Provide ONLY the JSON decision:
 """
-
-
 def supervisor_decide_node(state: IrisState):
-    """Supervisor LLM decides the route and extracts LTM updates."""
-    print("---NODE: Supervisor Decide---")
-
-    
-
+    print("---NODE: Supervisor Decide (IRIS)---")
     user_input = state["user_input"]
     chat_history = state.get("chat_history", [])
-    ltm_preferences = state.get("ltm_preferences", {})
+    ltm_preferences = state.get("ltm_preferences")
     user_identifier = state["user_identifier"]
     db_user_id = state["db_user_id"]
 
-    MAX_HISTORY_TURNS_FOR_PROMPT = 5 # Example: last 5 user/AI pairs (10 messages)
+    # --- OPTIMIZATION START ---
+    # Define a maximum number of messages to include in the prompt.
+    # 8 messages = the last 4 turns (4 user, 4 AI). This is usually plenty for context.
+    MAX_HISTORY_MESSAGES_FOR_PROMPT = 8
 
-    recent_chat_history = chat_history[-(MAX_HISTORY_TURNS_FOR_PROMPT * 2):] # Get last N pairs
+    # Slice the history to get only the most recent messages.
+    # The full history remains in the state, this is ONLY for the prompt.
+    history_for_prompt = chat_history[-MAX_HISTORY_MESSAGES_FOR_PROMPT:]
+    # --- OPTIMIZATION END ---
 
-    formatted_history = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in chat_history])
-    if not formatted_history:
-        formatted_history = "No conversation history yet."
-    elif len(chat_history) > MAX_HISTORY_TURNS_FOR_PROMPT * 2:
-        formatted_history = "[...previous messages truncated...]\n" + formatted_history
+    # Format the TRUNCATED chat history for the prompt
+    formatted_history = "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in history_for_prompt])
+    if not history_for_prompt: formatted_history = "No conversation history yet."
 
-    
-    MAX_LTM_STR_LEN = 1000 # Example
-
-    ltm_preferences_str = json.dumps(ltm_preferences) if ltm_preferences else "No preferences or facts loaded from LTM."
-    if len(ltm_preferences_str) > MAX_LTM_STR_LEN:
-        ltm_preferences_str = ltm_preferences_str[:MAX_LTM_STR_LEN] + "... [LTM truncated]"
-
-
-    # --- Truncate chat history for the prompt to avoid token limits ---
-    MAX_HISTORY_MESSAGES_FOR_PROMPT = 10 # Keep last 10 messages (5 turns)
-
-    if len(chat_history) > MAX_HISTORY_MESSAGES_FOR_PROMPT:
-        history_for_prompt = chat_history[-MAX_HISTORY_MESSAGES_FOR_PROMPT:]
-        history_prefix = f"[INFO: Showing last {len(history_for_prompt)//2} turns of conversation. Full history is longer.]\n"
-    else:
-        history_for_prompt = chat_history
-        history_prefix = ""
-
-    formatted_history = history_prefix + "\n".join([f"{msg.type.upper()}: {msg.content}" for msg in history_for_prompt])
-    if not history_for_prompt: # Check original chat_history if needed or history_for_prompt
-        formatted_history = "No conversation history yet."
-    # --- End of truncation ---
-
-    ltm_preferences_str = json.dumps(ltm_preferences) if ltm_preferences else "No preferences or facts loaded from LTM."
-    # Consider truncating ltm_preferences_str too if it can be very long.
-    MAX_LTM_PREF_LEN_FOR_PROMPT = 1500
-    if len(ltm_preferences_str) > MAX_LTM_PREF_LEN_FOR_PROMPT:
-        ltm_preferences_str = ltm_preferences_str[:MAX_LTM_PREF_LEN_FOR_PROMPT] + \
-                              "... [LTM preferences truncated due to length]"
+    ltm_preferences_str = "LTM not loaded for this decision."
+    if ltm_preferences:
+        ltm_preferences_str = json.dumps(ltm_preferences)
+        if len(ltm_preferences_str) > 1000: ltm_preferences_str = ltm_preferences_str[:1000] + "... [LTM truncated]"
 
     prompt_str = SUPERVISOR_PROMPT_TEMPLATE.format(
-        user_identifier=user_identifier,
-        db_user_id=db_user_id,
-        chat_history_formatted=formatted_history, # Use truncated version
-        ltm_preferences_formatted=ltm_preferences_str, # Use potentially truncated version
+        user_identifier=user_identifier, db_user_id=db_user_id,
+        chat_history_formatted=formatted_history, # This is now the shorter, truncated history
+        ltm_preferences_formatted=ltm_preferences_str,
         user_input=user_input
     )
-    
+
     try:
-        # First attempt with "json_mode"
-        structured_llm_json_mode = groq_llm.with_structured_output(
-            SupervisorDecision,
-            method="json_mode", 
-            # include_raw=False # Default is False, usually fine
-        )
-        print("Attempting structured output with method='json_mode'")
+        structured_llm_json_mode = groq_llm.with_structured_output(SupervisorDecision, method="json_mode")
         decision = structured_llm_json_mode.invoke(prompt_str)
-        print(f"Supervisor Decision: {decision.model_dump()}")
-        return {"supervisor_decision_output": decision}
-    except Exception as e_json_mode:
-        print(f"Error with method='json_mode': {e_json_mode}")
-        print("Falling back to default method for structured_output (likely 'function_calling')")
+        print(f"Supervisor Decision: {decision.model_dump_json(indent=2)}")
 
-        # Fallback to the default method (which was likely 'function_calling')
-        # This also helps confirm if 'json_mode' itself is the issue or if the original error persists
-
-        try:
-            structured_llm_default = groq_llm.with_structured_output(SupervisorDecision)
-            decision = structured_llm_default.invoke(prompt_str)
-            print(f"Supervisor Decision (default method): {decision.model_dump()}")
-            return {"supervisor_decision_output": decision}
-
-        except Exception as e_default:
-            print(f"Error in supervisor_decide_node (default method after json_mode failed): {e_default}")
-            # Construct the fallback decision as before
-            fallback_decision = SupervisorDecision(
-                route="clarify_with_user",
-                reasoning="An internal error occurred while processing the request with both json_mode and default structured output.",
-                direct_iris_response_content="I'm sorry, I encountered an issue. Could you please rephrase or try again?"
+        if decision.route == "load_ltm_and_respond" and state.get("ltm_loaded_this_turn") and not decision.direct_iris_response_content:
+            print("Supervisor re-evaluating after LTM load to formulate response...")
+            current_ltm_data_for_reprompt = json.dumps(state["ltm_preferences"]) if state["ltm_preferences"] else "No LTM data found after loading."
+            prompt_str_with_loaded_ltm = SUPERVISOR_PROMPT_TEMPLATE.format(
+                user_identifier=user_identifier, db_user_id=db_user_id,
+                chat_history_formatted=formatted_history, # Use the same truncated history for consistency
+                ltm_preferences_formatted=current_ltm_data_for_reprompt,
+                user_input=user_input
             )
-            return {"supervisor_decision_output": fallback_decision}
+            decision = structured_llm_json_mode.invoke(prompt_str_with_loaded_ltm)
+            print(f"Supervisor Decision (after LTM load & re-evaluation): {decision.model_dump_json(indent=2)}")
 
+        return {"supervisor_decision_output": decision}
+    except Exception as e:
+        print(f"Error in supervisor_decide_node: {e}. Defaulting to clarification.")
+        fallback_decision = SupervisorDecision(
+            route="clarify_with_user",
+            reasoning=f"Internal error during decision making: {str(e)[:100]}",
+            direct_iris_response_content="I'm having a bit of trouble. Could you please rephrase your request or try again?"
+        )
+        return {"supervisor_decision_output": fallback_decision}
 
-# call_sub_agent_node, call_fundamentals_agent_node, call_sentiment_agent_node,
-# call_technicals_agent_node, prepare_direct_iris_response_node, route_after_supervisor_decision
-# remain THE SAME as in the previous version. I'll omit them here for brevity but they are needed.
+def load_ltm_preferences_node(state: IrisState):
+    print("---NODE: Load LTM Preferences (IRIS)---")
+    db_user_id = state["db_user_id"]
+    if not db_user_id: # Should not happen if init_session ran
+        return {"ltm_preferences": {}, "ltm_loaded_this_turn": True, "intermediate_response": "Error: User ID missing, cannot load LTM."}
+
+    preferences = db_ltm.get_user_preferences(db_user_id)
+    print(f"LTM Preferences loaded for user {db_user_id}: {json.dumps(preferences, indent=2)[:200]}...")
+    # Update state with loaded LTM and flag that it was loaded this turn.
+    # The flow will go back to supervisor_decide.
+    return {"ltm_preferences": preferences, "ltm_loaded_this_turn": True}
+
+def update_ltm_in_db_node(state: IrisState):
+    print("---NODE: Update LTM in DB (IRIS)---")
+    decision = state["supervisor_decision_output"]
+    db_user_id = state["db_user_id"]
+    
+    if not db_user_id or not decision or decision.ltm_operation_needed != "update":
+        print("LTM DB: Update skipped (no user ID, no decision, or not an 'update' operation).")
+        return {} 
+
+    if decision.profile_updates_for_ltm:
+        for key, value in decision.profile_updates_for_ltm.items():
+            db_ltm.set_user_preference(db_user_id, key, value)
+        print(f"LTM DB: Updated profile/preferences: {decision.profile_updates_for_ltm}")
+
+    if decision.new_facts_for_ltm:
+        db_ltm.add_explicit_facts(db_user_id, decision.new_facts_for_ltm)
+        print(f"LTM DB: Added new explicit facts: {decision.new_facts_for_ltm}")
+    
+    # After LTM update, the supervisor should have already prepared a confirmation message
+    # in direct_iris_response_content. Flow goes to prepare_direct_iris_action_node.
+    # No need to change ltm_preferences in state here, it will be reloaded if needed.
+    return {}
 
 def call_sub_agent_node(state: IrisState, agent_app: Any, agent_name: str):
     """Generic node to call a sub-agent."""
     print(f"---NODE: Call {agent_name} Agent---")
     decision = state["supervisor_decision_output"]
     if not decision or not decision.parameters_for_subagent:
-        error_msg = f"Error: Missing parameters for {agent_name} agent."
-        print(error_msg)
-        return {"intermediate_response": error_msg}
+        return {"intermediate_response": f"Error: Missing parameters for {agent_name} agent call."}
 
     input_payload = decision.parameters_for_subagent
     print(f"Input to {agent_name} agent: {input_payload}")
-    
     try:
-        result = agent_app.invoke(input_payload) # Sub-agents are invoked simply
-        response = result.get("final_answer", f"No 'final_answer' key from {agent_name} agent.")
-        print(f"Response from {agent_name} agent: {response[:300]}...")
+        result_state = agent_app.invoke(input_payload) 
+        response = result_state.get("final_answer", f"No 'final_answer' from {agent_name}.")
         return {"intermediate_response": response}
     except Exception as e:
-        error_msg = f"Error calling {agent_name} agent: {e}"
-        print(error_msg)
-        import traceback
-        traceback.print_exc()
-        return {"intermediate_response": error_msg}
+        return {"intermediate_response": f"Sorry, error calling {agent_name} specialist: {str(e)[:100]}."}
 
 def call_fundamentals_agent_node(state: IrisState):
     return call_sub_agent_node(state, fundamentals_app_instance, "fundamentals")
@@ -325,266 +284,249 @@ def call_sentiment_agent_node(state: IrisState):
 def call_technicals_agent_node(state: IrisState):
     return call_sub_agent_node(state, technical_app_instance, "technicals")
 
-def prepare_direct_iris_response_node(state: IrisState):
-    print("---NODE: Prepare Direct IRIS Response---")
+def prepare_direct_iris_action_node(state: IrisState):
+    """Handles direct answers, OOD, LTM confirmations, and clarification questions."""
+    print("---NODE: Prepare Direct IRIS Action/Response---")
     decision = state["supervisor_decision_output"]
-    if not decision or not decision.direct_iris_response_content:
-        return {"intermediate_response": "I'm not sure how to respond to that directly. Can you clarify?"}
-    response = decision.direct_iris_response_content
-    print(f"Direct IRIS Response/Clarification: {response}")
-    return {"intermediate_response": response}
+    response = "I'm not sure how to respond to that. Can you please clarify?" # Default
+    
+    if decision and decision.direct_iris_response_content:
+        response = decision.direct_iris_response_content
+    elif decision: # If no direct content but a route that should have it
+        response = f"I'm processing that as a '{decision.route}' action." # Fallback if LLM missed content
 
+    print(f"Direct IRIS Action/Response content: {response}")
+    
+    # If this is a clarification request, store it in clarification_question_to_user
+    # This field in state will be used by finalize_response to make it the output for this turn
+    if decision and decision.route == "clarify_with_user":
+        return {"intermediate_response": response, "clarification_question_to_user": response}
+    
+    return {"intermediate_response": response, "clarification_question_to_user": None}
+
+
+def finalize_response_and_log_chat_node(state: IrisState):
+    print("---NODE: Finalize Response & Log Chat (IRIS)---")
+    user_input = state["user_input"]
+    # Prioritize clarification question if one was set for HITL
+    final_answer_for_this_turn = state.get("clarification_question_to_user") or \
+                                 state.get("intermediate_response") or \
+                                 "I'm sorry, I couldn't process that completely."
+    
+    db_session_id = state["db_session_id"]
+
+    # Update LangGraph's STM (chat_history)
+    current_stm_chat_history = state.get("chat_history", [])
+    updated_stm_chat_history = current_stm_chat_history + [
+        HumanMessage(content=user_input),
+        AIMessage(content=final_answer_for_this_turn)
+    ]
+    
+    # Log to LTM database
+    if db_session_id:
+        db_ltm.log_chat_message(db_session_id, "user", user_input)
+        db_ltm.log_chat_message(db_session_id, "assistant", final_answer_for_this_turn)
+        print(f"Messages logged to LTM chat_logs for LTM session ID: {db_session_id}")
+
+    print(f"Final Response to User (this turn): {final_answer_for_this_turn}")
+    # Reset ltm_loaded_this_turn for the next independent user input
+    return {
+        "final_response": final_answer_for_this_turn, 
+        "chat_history": updated_stm_chat_history,
+        "ltm_loaded_this_turn": False # Reset for the next user input cycle
+        # clarification_question_to_user is implicitly cleared if not set by prepare_direct_iris_action_node
+    }
+
+# --- Routing Logic ---
 def route_after_supervisor_decision(state: IrisState):
     decision = state["supervisor_decision_output"]
-    if not decision: return "direct_iris_action" # Fallback
-    print(f"Routing based on: {decision.route}")
+    if not decision:
+        # This is a fallback, should ideally not be hit if supervisor_decide_node is robust
+        state["supervisor_decision_output"] = SupervisorDecision(
+            route="clarify_with_user", 
+            reasoning="Critical error: Supervisor decision missing.",
+            direct_iris_response_content="I had an internal hiccup. Could you rephrase?"
+        )
+        return "direct_iris_action" 
+
+    route = decision.route
+    print(f"IRIS Supervisor Routing to: {route} (Reason: {decision.reasoning})")
+
+    # If supervisor wants to load LTM, and it hasn't been loaded this turn yet
+    if route == "load_ltm_and_respond" and not state.get("ltm_loaded_this_turn"):
+        return "load_ltm" 
+    # If it was 'load_ltm_and_respond' but LTM is now loaded (or was already), supervisor should provide direct_iris_response_content
+    elif route == "load_ltm_and_respond" and state.get("ltm_loaded_this_turn"):
+         # Supervisor should have ideally populated direct_iris_response_content in the re-evaluation step
+        return "direct_iris_action"
+
+    if route == "update_ltm_and_respond":
+        return "update_ltm"
+    
     route_map = {
         "fundamentals": "call_fundamentals",
         "sentiment": "call_sentiment",
         "technicals": "call_technicals",
-        "direct_iris_answer": "direct_iris_action",
-        "clarify_with_user": "direct_iris_action"
+        "in_domain_general": "direct_iris_action",
+        "out_of_domain": "direct_iris_action",
+        "clarify_with_user": "direct_iris_action" # This will set clarification_question_to_user
     }
-    chosen_route = route_map.get(decision.route)
-    if not chosen_route:
-        print(f"Warning: Unknown route '{decision.route}'. Defaulting to clarification.")
-        state["supervisor_decision_output"].direct_iris_response_content = (
-            f"I'm not sure how to handle the category '{decision.route}'. Could you please clarify?"
-        )
-        state["supervisor_decision_output"].route = "clarify_with_user"
+    chosen_node = route_map.get(route)
+    if not chosen_node: # Should not happen if supervisor adheres to schema
+        print(f"Warning: Unknown route '{route}' from supervisor. Defaulting to clarification.")
+        decision.route = "clarify_with_user"
+        decision.direct_iris_response_content = f"I'm unsure how to handle '{route}'. Can you clarify?"
         return "direct_iris_action"
-    return chosen_route
+    return chosen_node
 
+def route_after_ltm_load(state: IrisState):
+    """After LTM is loaded into state, go back to supervisor to re-decide with LTM context."""
+    print("LTM loaded. Routing back to supervisor_decide for re-evaluation.")
+    return "supervisor_decide"
 
-def update_ltm_in_db_node(state: IrisState):
-    """Updates LTM (preferences & facts) in MySQL based on supervisor's decision."""
-    print("---NODE: Update LTM in DB---")
-    decision = state["supervisor_decision_output"]
-    db_user_id = state["db_user_id"]
-    
-    if not db_user_id:
-        print("Error: db_user_id not found in state. Cannot update LTM.")
-        return {} # No changes to LTM state if error
-
-    if decision:
-        if decision.profile_updates_for_ltm:
-            for key, value in decision.profile_updates_for_ltm.items():
-                db_ltm.set_user_preference(db_user_id, key, value)
-            print(f"LTM DB: Updated profile/preferences: {decision.profile_updates_for_ltm}")
-
-        if decision.new_facts_for_ltm:
-            db_ltm.add_explicit_facts(db_user_id, decision.new_facts_for_ltm)
-            print(f"LTM DB: Added new explicit facts: {decision.new_facts_for_ltm}")
-    else:
-        print("LTM DB: No supervisor decision found, no LTM updates.")
-        
-    # No need to return ltm_preferences here as it's not modified by this node directly.
-    # The next load_ltm_preferences_node in a new turn would fetch the updated data.
-    return {}
-
-
-def finalize_response_and_log_chat_node(state: IrisState):
-    """
-    Finalizes the response, updates LangGraph's chat_history (STM),
-    and logs the user/assistant messages to the LTM chat_logs table in MySQL.
-    """
-    print("---NODE: Finalize Response & Log Chat to STM/LTM---")
-    user_input = state["user_input"]
-    intermediate_response = state.get("intermediate_response", "I'm sorry, I couldn't generate a response.")
-    db_session_id = state["db_session_id"] # MySQL LTM session ID
-
-    final_answer = intermediate_response # For now, no final LLM polish
-
-    # 1. Update LangGraph's chat_history (STM for checkpointer)
-    current_stm_chat_history = state.get("chat_history", [])
-    updated_stm_chat_history = current_stm_chat_history + [
-        HumanMessage(content=user_input),
-        AIMessage(content=final_answer)
-    ]
-    
-    # 2. Log messages to MySQL LTM chat_logs table
-    if db_session_id:
-        db_ltm.log_chat_message(db_session_id, "user", user_input)
-        db_ltm.log_chat_message(db_session_id, "assistant", final_answer)
-        print(f"Messages logged to LTM chat_logs for LTM session ID: {db_session_id}")
-    else:
-        print("Warning: db_session_id not found. Cannot log messages to LTM chat_logs.")
-
-    print(f"Final Response to User: {final_answer}")
-    return {"final_response": final_answer, "chat_history": updated_stm_chat_history}
-
-
-
+def route_after_ltm_update(state: IrisState):
+    """After LTM is updated in DB, supervisor already set a confirmation message."""
+    print("LTM updated in DB. Routing to direct_iris_action for confirmation message.")
+    return "direct_iris_action" # Supervisor should have set direct_iris_response_content
 
 # --- Build IRIS Graph ---
-
 iris_graph_builder = StateGraph(IrisState)
 
-iris_graph_builder.add_node("initialize_session_and_ltm_ids", initialize_session_and_ltm_ids_node)
-iris_graph_builder.add_node("load_ltm_preferences", load_ltm_preferences_node)
+iris_graph_builder.add_node("initialize_session", initialize_session_node)
 iris_graph_builder.add_node("supervisor_decide", supervisor_decide_node)
-
+iris_graph_builder.add_node("load_ltm", load_ltm_preferences_node)
+iris_graph_builder.add_node("update_ltm", update_ltm_in_db_node)
 iris_graph_builder.add_node("call_fundamentals_agent", call_fundamentals_agent_node)
 iris_graph_builder.add_node("call_sentiment_agent", call_sentiment_agent_node)
 iris_graph_builder.add_node("call_technicals_agent", call_technicals_agent_node)
-iris_graph_builder.add_node("direct_iris_action_node", prepare_direct_iris_response_node)
-
-iris_graph_builder.add_node("update_ltm_in_db", update_ltm_in_db_node)
+iris_graph_builder.add_node("direct_iris_action_node", prepare_direct_iris_action_node)
 iris_graph_builder.add_node("finalize_response_and_log_chat", finalize_response_and_log_chat_node)
 
+iris_graph_builder.set_entry_point("initialize_session")
+iris_graph_builder.add_edge("initialize_session", "supervisor_decide")
 
-# --- Define Edges ---
+iris_graph_builder.add_conditional_edges("supervisor_decide", route_after_supervisor_decision, {
+    "load_ltm": "load_ltm",
+    "update_ltm": "update_ltm",
+    "call_fundamentals": "call_fundamentals_agent",
+    "call_sentiment": "call_sentiment_agent",
+    "call_technicals": "call_technicals_agent",
+    "direct_iris_action": "direct_iris_action_node",
+})
 
-iris_graph_builder.add_edge(START, "initialize_session_and_ltm_ids")
-iris_graph_builder.add_edge("initialize_session_and_ltm_ids", "load_ltm_preferences")
-iris_graph_builder.add_edge("load_ltm_preferences", "supervisor_decide")
+iris_graph_builder.add_edge("load_ltm", "supervisor_decide") # Re-evaluate after loading
+iris_graph_builder.add_edge("update_ltm", "direct_iris_action_node") # Go to confirmation message
 
-iris_graph_builder.add_conditional_edges(
-    "supervisor_decide",
-    route_after_supervisor_decision,
-    {
-        "call_fundamentals": "call_fundamentals_agent",
-        "call_sentiment": "call_sentiment_agent",
-        "call_technicals": "call_technicals_agent",
-        "direct_iris_action": "direct_iris_action_node",
-    }
-)
+iris_graph_builder.add_edge("call_fundamentals_agent", "finalize_response_and_log_chat")
+iris_graph_builder.add_edge("call_sentiment_agent", "finalize_response_and_log_chat")
+iris_graph_builder.add_edge("call_technicals_agent", "finalize_response_and_log_chat")
+iris_graph_builder.add_edge("direct_iris_action_node", "finalize_response_and_log_chat")
 
-iris_graph_builder.add_edge("call_fundamentals_agent", "update_ltm_in_db")
-iris_graph_builder.add_edge("call_sentiment_agent", "update_ltm_in_db")
-iris_graph_builder.add_edge("call_technicals_agent", "update_ltm_in_db")
-iris_graph_builder.add_edge("direct_iris_action_node", "update_ltm_in_db")
+iris_graph_builder.add_edge("finalize_response_and_log_chat", END) # END node if no clarification
 
-iris_graph_builder.add_edge("update_ltm_in_db", "finalize_response_and_log_chat")
-iris_graph_builder.add_edge("finalize_response_and_log_chat", END)
-
-# Compile with Checkpointer for Short-Term Memory (LangGraph's state inc. chat_history)
-# DO NOT COMPILE iris_app here at the module level with the checkpointer like this:
-# memory_checkpointer = SqliteSaver.from_conn_string("iris_stm_checkpoint.sqlite")
-# iris_app = iris_graph_builder.compile(checkpointer=memory_checkpointer)
+# --- Compile with Checkpointer ---
+# It's good practice to define the checkpointer separately and pass it during compilation,
+# especially if you might have different checkpointer configs for dev/test/prod.
+# For the main `app` instance that might be imported, compile without checkpointer.
+# The checkpointer is applied in the `if __name__ == "__main__":` block for testing.
+iris_app_compiled_no_checkpoint = iris_graph_builder.compile()
 
 
 # --- Main Execution for Testing IRIS ---
-
 if __name__ == "__main__":
-    print("IRIS Supervisor Agent (with MySQL LTM) Compiled. Ready for testing.")
-
+    print("IRIS Supervisor Agent (Enhanced for LTM, HITL, New Routes) Compiled.")
 
     # In local test mode, we compile the app with a checkpointer context
-    with SqliteSaver.from_conn_string("iris_stm_checkpoint.sqlite") as actual_test_checkpointer:
-        print("Compiling IRIS graph for local testing...")
-        iris_app_for_test = iris_graph_builder.compile(checkpointer=actual_test_checkpointer)
+    # THIS IS THE CORRECT PATTERN YOU ORIGINALLY HAD (and should work)
+    with SqliteSaver.from_conn_string(":memory:") as memory_checkpointer_instance: # Use :memory: for fresh tests
+        print("Compiling IRIS graph for local testing with checkpointer...")
+        iris_app_for_test = iris_graph_builder.compile(checkpointer=memory_checkpointer_instance)
         print("IRIS graph compiled for local testing.")
 
-        # Unique user identifier (e.g., email or username from your auth system)
-        test_user_identifier = f"user_{str(uuid.uuid4())[:8]}@example.com" # Ensures a new user for each full script run for easier testing
+        test_user_identifier = f"user_iris_hitl_{str(uuid.uuid4())[:6]}" 
+        current_lg_thread_id = f"lg_thread_hitl_{str(uuid.uuid4())[:8]}"
 
-        # LangGraph thread_id for the session
-        # A new thread_id simulates a completely new chat session for LangGraph's STM.
-        # If you reuse a thread_id, LangGraph will resume that STM session.
-        current_lg_thread_id = f"lg_thread_{str(uuid.uuid4())[:12]}"
-
-        print(f"\n--- Starting Test Session ---")
-        print(f"User Identifier (for LTM): {test_user_identifier}")
-        print(f"LangGraph Thread ID (for STM): {current_lg_thread_id}")
+        print(f"\n--- Starting IRIS Test Session ---")
+        print(f"User Identifier (LTM): {test_user_identifier}")
+        print(f"LangGraph Thread ID (STM): {current_lg_thread_id}")
 
         config_for_stream = {"configurable": {"thread_id": current_lg_thread_id}}
 
-        test_queries = [
-            "Hello IRIS, nice to meet you!",
+        test_interactions = [
+            {"user_input": "Hello IRIS!"},
+            {"user_input": "What is the scripcode and fincode of Ambalal Sarabhai?"},
+            # {"user_input": "What's the capital of Germany?"},
+            # {"user_input": "Please remember my favorite stock is GOOGL and I prefer value investing."},
+            # {"user_input": "What is the market cap of Reliance Industries?"}, 
+            # {"user_input": "What did I say my favorite stock was?"},
+            # {"user_input": "And my investment style?"},
+            # {"user_input": "Tell me about Adani"},
+            # {"user_input": "I mean Adani Enterprises. What's its current sentiment?"},
+            # {"user_input": "Is Tesla overbought?"},
+            # {"user_input": "Thanks IRIS!"},
+            # {"user_input":"List all distinct industries from company_master."},
+            # {"user_input":"What is the market cap of Reliance Industries and Aegis Logistics"},
+            # {"user_input":"What are the top 5 companies by market cap?"},
+            # {"user_input":"Compare the market cap of Reliance Industries and Ambalal Sarabhai"},
+            # {"user_input":"Is Reliance overbought?"},
+            # {"user_input":"How volatile is Aegis Logistics now?"},
+            # {"user_input":"Should I buy reliance based on bollinger bands?"},
+            # {"user_input":"Who invented the radio?"}
+
+
             
-            "What's the latest Net Cash Flow of Reliance",
-           
         ]
 
-        # Initial state for the stream must include fields expected by the first node
-        # and any fields that are part of the 'configurable' context.
-        # `user_input` changes per turn. `user_identifier` and `langgraph_thread_id` are session-level.
         base_inputs = {
             "user_identifier": test_user_identifier,
             "langgraph_thread_id": current_lg_thread_id,
-            # db_user_id, db_session_id, chat_history, ltm_preferences will be populated by the graph.
         }
 
-        for q_text in test_queries:
-            print(f"\n>>> USER INPUT: {q_text}")
-
+        for interaction in test_interactions:
+            q_text = interaction["user_input"]
+            print(f"\n\n>>> USER INPUT: '{q_text}'")
+            
             current_turn_inputs = {**base_inputs, "user_input": q_text}
-
+            
+            final_turn_response = None
             try:
-                # USE THE CORRECTLY COMPILED APP: iris_app_for_test
                 for event_value_map in iris_app_for_test.stream(current_turn_inputs, config=config_for_stream, stream_mode="values"):
-                    last_node_event_key = list(event_value_map.keys())[-1]
-                    print(f"\nState after node '{last_node_event_key}':")
+                    last_node_event_key = list(event_value_map.keys())[-1] 
+                    print(f"\n  State after node ~'{last_node_event_key}':")
 
+                    if "supervisor_decision_output" in event_value_map and event_value_map["supervisor_decision_output"]:
+                        print(f"    Supervisor Decision: {event_value_map['supervisor_decision_output'].model_dump_json(indent=2)}")
+                    if "ltm_preferences" in event_value_map and event_value_map["ltm_preferences"] is not None:
+                         print(f"    LTM Preferences in State: {json.dumps(event_value_map['ltm_preferences'], indent=2)[:200]}...")
+                    if "intermediate_response" in event_value_map and event_value_map["intermediate_response"]:
+                        print(f"    IRIS Intermediate: {event_value_map['intermediate_response']}")
+                    if "clarification_question_to_user" in event_value_map and event_value_map["clarification_question_to_user"]:
+                        print(f"    IRIS Clarification Question to User: {event_value_map['clarification_question_to_user']}")
                     if "final_response" in event_value_map and event_value_map["final_response"]:
-                        print(f"  IRIS FINAL RESPONSE: {event_value_map['final_response']}")
-                    elif "intermediate_response" in event_value_map and event_value_map["intermediate_response"]:
-                        print(f"  IRIS Intermediate Response: {event_value_map['intermediate_response'][:200]}...")
-                    elif "supervisor_decision_output" in event_value_map and event_value_map["supervisor_decision_output"]:
-                        print(f"  Supervisor Decision: {event_value_map['supervisor_decision_output'].model_dump()}")
-                    
-                    # You can add more detailed logging for db_user_id, db_session_id, ltm_preferences etc.
-                    # if last_node_event_key == "initialize_session_and_ltm_ids":
-                        # print(f"  DB User ID: {event_value_map.get('db_user_id')}, DB Session ID: {event_value_map.get('db_session_id')}")
-
-
-                    # if last_node_event_key == "load_ltm_preferences":
-                        # print(f"  LTM Preferences Loaded: {json.dumps(event_value_map.get('ltm_preferences'), indent=2)[:200]}...")
+                        final_turn_response = event_value_map['final_response']
+                        print(f"    IRIS FINAL RESPONSE TO USER: {final_turn_response}")
+                
+                if final_turn_response and "clarify" in final_turn_response.lower(): # Rudimentary check
+                    print(f"    >>> IRIS IS WAITING FOR CLARIFICATION (HITL). Next input should be the answer.")
 
             except Exception as e:
                 print(f"Error invoking IRIS graph for question '{q_text}': {e}")
                 import traceback
                 traceback.print_exc()
             
-
             print("---------------------------------------\n")
 
-
-        print("\n--- Test Session Ended ---")
-        print(f"Check your '{db_ltm.DB_NAME}' MySQL database for user, preferences, session, and chat_log entries.")
+        print("\n--- IRIS Test Session Ended ---")
         print(f"User Identifier used: {test_user_identifier}")
         print(f"LangGraph Thread ID used: {current_lg_thread_id}")
-
-
-        # Example: Retrieve LTM chat history for the session just completed
-        # You'd need the db_user_id and then the db_session_id associated with current_lg_thread_id
-        # This is a bit manual for a test script; in an app, you'd manage these IDs.
-
-
+        print(f"Check your '{db_ltm.DB_NAME}' MySQL database. STM was in-memory for this test run.")
+            
         try:
-            final_db_user_id = db_ltm.get_or_create_user(test_user_identifier) # Get the ID again
-            # Find the LTM session ID. In a real app, you'd store/retrieve this mapping.
-            # For testing, we might need to query sessions table by langgraph_thread_id.
-            session_row = db_ltm._execute_query(
-                "SELECT id FROM sessions WHERE langgraph_thread_id = :lg_id AND user_id = :db_uid",
-                {"lg_id": current_lg_thread_id, "db_uid": final_db_user_id},
-                fetch_one=True
-            )
-
-            if session_row:
-                final_db_session_id = session_row[0]
-                print(f"\nRetrieving LTM chat history for LTM Session ID: {final_db_session_id}")
-                ltm_chat_history = db_ltm.get_chat_history_for_ltm_session(final_db_session_id, limit=100)
-
-                for role, content, ts in ltm_chat_history:
-                    print(f"  {ts} [{role.upper()}]: {content}")
-
-            else:
-                print(f"Could not find LTM session for thread {current_lg_thread_id} to display chat history.")
-
-        
-        except Exception as e:
-            print(f"Error retrieving LTM chat history for testing: {e}")
-
-
-        
-        # Visualize the graph
-        try:
-            print("\nAttempting to generate IRIS graph visualization...")
+            print("\nAttempting to generate IRIS graph visualization (iris_supervisor_v3_graph.png)...")
+            # Use the compiled app instance that has the checkpointer for get_graph if needed
             img_data = iris_app_for_test.get_graph().draw_mermaid_png() 
-            with open("iris_supervisor_mysql_ltm_graph.png", "wb") as f:
+            with open("iris_supervisor_v3_graph.png", "wb") as f:
                 f.write(img_data)
-            print("IRIS graph saved to iris_supervisor_mysql_ltm_graph.png")
+            print("IRIS graph saved to iris_supervisor_v3_graph.png")
         except Exception as e:
-            print(f"Could not generate IRIS graph visualization: {e}. Ensure graphviz/pygraphviz/playwright are installed.")
+            print(f"Could not generate IRIS graph visualization: {e}.")
