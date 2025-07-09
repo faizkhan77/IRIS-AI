@@ -30,4 +30,6 @@ iris_stm_checkpoint_async.sqlite
 
 fun.md
 
+context/rag_vector_store.pkl
+
 test

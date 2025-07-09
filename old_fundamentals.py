@@ -1,21 +1,26 @@
 # fundamentals_agent.py
-import asyncio
-from typing import TypedDict, List, Union, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from langgraph.graph import START, StateGraph, END
+from typing import TypedDict, Annotated, List as TypingList, Union, Dict
+from langchain_community.tools.sql_database.tool import QuerySQLDatabaseTool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_community.utilities import SQLDatabase
 from dotenv import load_dotenv
-# --- FIX 1: ADDED THIS MISSING IMPORT ---
-from sqlalchemy import text
-# --- END OF FIX ---
+import os
 import json
 
+# --- RAG INTEGRATION: Import the function that provides dynamic context ---
 from agents.rag_context_provider import get_rag_based_context
+
+# Custom module imports (ensure these paths are correct)
 from model_config import groq_llm
 from db_config import async_engine
-from langgraph.graph import StateGraph, END
+
+# For graph visualization
+from IPython.display import Image, display
 
 load_dotenv()
 
-# --- Pydantic Models for Structured LLM Outputs ---
 class IdentifiedEntity(BaseModel):
     entity_name: str = Field(description="The name of the company/stock symbol identified.")
 
@@ -30,10 +35,12 @@ class GeneralizedQuery(BaseModel):
 class SQLQuery(BaseModel):
     query: str = Field(description="A single, syntactically valid SQL query.")
 
+
 # --- Agent State ---
 class FundamentalsAgentState(TypedDict):
     question: str
     extraction: Optional[ExtractionOutput]
+    # Store results of parallel operations
     generalized_tasks: Optional[Dict[str, str]]
     rag_contexts: Optional[Dict[str, str]]
     sql_queries: Optional[Dict[str, str]]
@@ -42,13 +49,14 @@ class FundamentalsAgentState(TypedDict):
     final_answer: str
 
 # --- Prompts ---
+# Using f-strings for cleaner, multi-line prompts
 EXTRACT_PROMPT = """
 You are an expert financial data extraction assistant. Analyze the user's question to identify all financial entities and describe the task for each.
 
 User Question: {question}
 
 Your task is to produce a single JSON object matching the 'ExtractionOutput' schema.
-- `is_database_required`: Set to true if financial data from a database is needed. This includes requests for descriptions, details, or any specific data point about a company.
+- `is_database_required`: Set to true if financial data from a database is needed.
 - `entities`: A list of all distinct company names or stock symbols.
 - `tasks`: A dictionary mapping each entity's name to a concise task description. For non-entity questions, use the key "General Query".
 
@@ -61,16 +69,6 @@ Your Output:
   "tasks": {{
       "Reliance": "market capitalization of Reliance",
       "Infosys": "latest sales figures for Infosys"
-  }}
-}}
-
-User Question: "Tell me about Ambalal Sarabhai's business."
-Your Output:
-{{
-  "is_database_required": true,
-  "entities": [{{"entity_name": "Ambalal Sarabhai"}}],
-  "tasks": {{
-      "Ambalal Sarabhai": "business description of Ambalal Sarabhai"
   }}
 }}
 
@@ -103,11 +101,11 @@ Produce a JSON object matching the `GeneralizedQuery` schema.
 Specific Task: "market cap of Reliance Industries"
 Your Output: {{"generalized_question": "which tables and columns are needed to calculate a company's market capitalization?"}}
 
-Specific Task: "business description of Ambalal Sarabhai"
-Your Output: {{"generalized_question": "which table and column contains the business description of a company?"}}
+Specific Task: "latest promoter holding for Aegis Logistics"
+Your Output: {{"generalized_question": "how to find the latest promoter holding percentage for a company?"}}
 ---
 
-Specific Task: {specific_taclsk}
+Specific Task: {specific_task}
 Your Output:
 """
 
@@ -132,22 +130,19 @@ Output MUST be a single, valid JSON object matching the `SQLQuery` schema.
 ANSWER_COMPOSER_PROMPT = """
 You are IRIS, a financial assistant. Synthesize a single, cohesive, and natural language answer based on the user's question and the data provided.
 
-Original Question: "{question}"
+Original Question: {question}
 
 --- Data Collected ---
-Tasks Identified: {tasks}
-Query Results: {results_summary}
+{results_summary}
 ---
 
-- If `Query Results` contains an error message, explain the problem clearly and politely.
-- If `Query Results` are available, use them to directly answer the user's question. Address all identified tasks.
-- If `Query Results` are empty but specific `Tasks Identified` exist (and it's not a greeting), it means data retrieval failed. Apologize and state that you could not retrieve the specific information.
-- If the task is a "General greeting", respond with a polite, friendly greeting.
-
-Be concise and do not mention SQL or how the data was retrieved.
+- If the data contains an error message, explain the problem clearly and politely.
+- Otherwise, directly answer all parts of the user's question using the provided data.
+- Be concise and do not mention SQL or how the data was retrieved.
 """
 
-# --- Agent Nodes ---
+# --- Agent Nodes (Async & Parallelized) ---
+
 async def extract_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Extract Entities & Tasks---")
     prompt = EXTRACT_PROMPT.format(question=state["question"])
@@ -162,32 +157,47 @@ async def extract_node(state: FundamentalsAgentState) -> Dict:
 async def parallel_generalize_and_rag_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Generalize & RAG---")
     tasks = state["extraction"].tasks
+    
     async def _generalize_and_fetch(task_key: str, specific_task: str):
         try:
+            # 1. Generalize task
             gen_prompt = GENERALIZE_TASK_PROMPT.format(specific_task=specific_task)
             structured_llm = groq_llm.with_structured_output(GeneralizedQuery)
             gen_result = await structured_llm.ainvoke(gen_prompt)
             generalized_question = gen_result.generalized_question
             print(f"Task '{specific_task}' ==> Generalized: '{generalized_question}'")
+            
+            # 2. Fetch RAG context with generalized question
             rag_context = get_rag_based_context(generalized_question)
             return task_key, generalized_question, rag_context
         except Exception as e:
             print(f"Error processing task '{task_key}': {e}")
             return task_key, None, f"Error retrieving context for task: {specific_task}"
+
+    # Run all generalization and RAG fetches in parallel
     coroutines = [_generalize_and_fetch(key, task) for key, task in tasks.items()]
     results = await asyncio.gather(*coroutines)
+    
     generalized_tasks = {key: gen_q for key, gen_q, _ in results if gen_q}
     rag_contexts = {key: rag_c for key, _, rag_c in results if rag_c}
+    
     return {"generalized_tasks": generalized_tasks, "rag_contexts": rag_contexts}
+
 
 async def parallel_write_queries_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Write SQL Queries---")
     tasks = state["extraction"].tasks
     rag_contexts = state["rag_contexts"]
     question = state["question"]
+    
     async def _write_one_query(task_key: str, task_desc: str):
         rag_context = rag_contexts.get(task_key, "No specific context found.")
-        prompt = WRITE_QUERY_PROMPT.format(original_question=question, current_task=task_desc, entity_name=task_key, rag_context=rag_context)
+        prompt = WRITE_QUERY_PROMPT.format(
+            original_question=question,
+            current_task=task_desc,
+            entity_name=task_key,
+            rag_context=rag_context
+        )
         structured_llm = groq_llm.with_structured_output(SQLQuery)
         try:
             result = await structured_llm.ainvoke(prompt)
@@ -197,22 +207,26 @@ async def parallel_write_queries_node(state: FundamentalsAgentState) -> Dict:
             error_msg = f"Error generating SQL for task '{task_desc}': {e}"
             print(error_msg)
             return task_key, f"/* {error_msg} */ SELECT 'Error generating query';"
+            
     coroutines = [_write_one_query(key, task) for key, task in tasks.items()]
     results = await asyncio.gather(*coroutines)
+    
     sql_queries = {key: query for key, query in results}
     return {"sql_queries": sql_queries}
+
 
 async def parallel_execute_queries_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Execute SQL Queries---")
     queries = state["sql_queries"]
+    
     async def _execute_one_query(task_key: str, query: str):
         if "Error generating query" in query:
-            return task_key, query
+            return task_key, query # Pass through generation errors
         try:
             async with async_engine.connect() as connection:
-                # The 'text' function is now imported and will work
                 result = await connection.execute(text(query))
                 rows = result.fetchall()
+            # Convert result to a more readable string format
             result_str = json.dumps([dict(row._mapping) for row in rows], indent=2)
             print(f"Result for '{task_key}': {result_str[:200]}...")
             return task_key, result_str
@@ -220,61 +234,65 @@ async def parallel_execute_queries_node(state: FundamentalsAgentState) -> Dict:
             error_msg = f"Error executing SQL for '{task_key}': {e}"
             print(error_msg)
             return task_key, error_msg
+
     coroutines = [_execute_one_query(key, q) for key, q in queries.items()]
     results = await asyncio.gather(*coroutines)
+    
     query_results = {key: res for key, res in results}
     return {"query_results": query_results}
+
 
 async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Compose Final Answer---")
     if state.get("error_message"):
         return {"final_answer": state["error_message"]}
         
-    # --- FIX 2: ACCESS Pydantic ATTRIBUTES DIRECTLY ---
-    extraction_output = state.get("extraction")
-    if extraction_output:
-        tasks = extraction_output.tasks
-    else:
-        tasks = {}
-    # --- END OF FIX ---
+    results = state.get("query_results", {})
+    results_summary = "\n".join([f"- For '{key}':\n{res}" for key, res in results.items()])
     
-    query_results = state.get("query_results", {})
-    
-    if query_results:
-        results_summary = "\n".join([f"- For '{key}':\n{res}" for key, res in query_results.items()])
-    else:
-        results_summary = "No database results were retrieved."
+    if not results_summary: # Handle non-DB path
+        return {"final_answer": "Hello! How can I assist you today?"}
 
     prompt = ANSWER_COMPOSER_PROMPT.format(
         question=state["question"],
-        tasks=json.dumps(tasks),
         results_summary=results_summary
     )
     response = await groq_llm.ainvoke(prompt)
     return {"final_answer": response.content}
 
 # --- Graph Definition ---
+
 def route_after_extraction(state: FundamentalsAgentState) -> str:
     if state.get("error_message"):
-        return "end"
-    # Access Pydantic attribute directly
+        return "end" # End if extraction failed
     if state["extraction"].is_database_required:
         return "db_path"
     else:
         return "general_path"
 
 graph_builder = StateGraph(FundamentalsAgentState)
+
 graph_builder.add_node("extract", extract_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
 graph_builder.add_node("execute_queries", parallel_execute_queries_node)
 graph_builder.add_node("compose_answer", compose_final_answer_node)
+
 graph_builder.set_entry_point("extract")
-graph_builder.add_conditional_edges("extract", route_after_extraction, {"db_path": "generalize_and_rag", "general_path": "compose_answer", "end": END})
+graph_builder.add_conditional_edges(
+    "extract",
+    route_after_extraction,
+    {
+        "db_path": "generalize_and_rag",
+        "general_path": "compose_answer",
+        "end": END
+    }
+)
 graph_builder.add_edge("generalize_and_rag", "write_queries")
 graph_builder.add_edge("write_queries", "execute_queries")
 graph_builder.add_edge("execute_queries", "compose_answer")
 graph_builder.add_edge("compose_answer", END)
+
 app = graph_builder.compile()
 
 # --- Main Execution for Testing ---
@@ -282,15 +300,9 @@ if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
             "Hello there",
-            "What is the market cap of Reliance Industries and the latest sales for ABB India?",
+            "What is the market cap of Reliance Industries and the latest sales for Infosys?",
             "List all distinct industries",
-            "Description of Ambalal Sarabhai",
-         
-        # "What is the market cap of Reliance Industries?",
-        # "What is the market cap of Reliance Industries and Aegis Logistics",
-        # "What are the top 5 companies by market cap?",
-        # "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
-        # "Scripcode and fincode of ABB India"
+            "Description of Ambalal Sarabhai"
         ]
         for q_text in test_queries:
             print(f"\n\n--- TESTING: \"{q_text}\" ---")
