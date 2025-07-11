@@ -33,3 +33,5 @@ fun.md
 context/rag_vector_store.pkl
 
 test
+
+models/models--sentence-transformers--all-MiniLM-L6-v2

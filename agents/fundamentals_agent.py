@@ -59,14 +59,12 @@ GOLDEN_SCHEMA_CONTEXT = """
         -   Table: `company_master`
         -   Columns: `fincode` (primary key), `compname` (full company name), `scripcode`, `industry` (industry classification).
     2.  **Finding "Latest" Data:**
-        -   `company_results`, `company_shareholders_details`: use `date_end`.
-        -   `company_board_director`: use `yrc`.
-        -   Most others (e.g., `company_equity_s`): use `year_end`.
-        -   `bse_abjusted_price_eod`: use `date`.
+        -   `company_results` and `company_shareholding_pattern`: use `date_end`.
+        -   Most others (e.g., `company_equity`): use `year_end`.
     3.  **Key Data Points:**
         -   Market Cap: `mcap` in `company_equity`.
         -   Sales/Revenue: `net_sales` or `total_income` in `company_results`.
-        -   Promoter Shareholding: `psh_f_total_promoter` in `company_shareholding_pattern`.
+        -   Promoter Shareholding: The definitive column is `tp_f_total_promoter` in `company_shareholding_pattern`.
     */
 """
 
@@ -103,30 +101,40 @@ EXTRACT_PROMPT = """
 """
 
 GENERALIZE_TASK_PROMPT = """
-    You are a query transformation assistant. Rephrase a specific user request into a generic question suitable for a RAG system to find relevant database schema. Remove all specific entity names.
-    **If the user's task implies getting the 'latest' or 'most recent' data (e.g., 'latest sales'), you MUST include keywords like 'latest current date year period' in your generalized question.**
+    You are a query transformation assistant. Rephrase a specific user request into a generic question for a RAG system. Remove all specific entity names.
+    **If the user's task implies getting the 'latest' or 'most recent' data, you MUST include keywords like 'latest current date year'.**
+    **If the user's task implies ranking (e.g., "top 5"), you MUST also include 'latest date year' to ensure the ranking is on current data.**
 
     --- EXAMPLES ---
     Specific Task: "latest market capitalization of a company"
     Your Output: {{"generalized_question": "tables and columns for latest current market capitalization mcap date year"}}
 
-    Specific Task: "business description of a company"
-    Your Output: {{"generalized_question": "table and column for company business details description"}}
+    Specific Task: "top 5 companies by market capitalization"
+    Your Output: {{"generalized_question": "tables and columns for top 5 companies by latest market capitalization mcap date year"}}
     ---
     Specific Task: {specific_task}
     Your Output:
 """
 
+
 WRITE_QUERY_PROMPT = """
     You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query.
 
     --- THOUGHT PROCESS (You MUST follow this) ---
-    1.  **Consult the Guide:** I will first read the "Golden Schema & High-Level Database Guide".
-    2.  **Analyze the Task & Context:** I will analyze the user's task and the Dynamic RAG Schema provided.
-    3.  **Select Full Company Name:** If the task involves a specific entity, I MUST `SELECT compname` from `company_master` to get the full name, in addition to the primary data point.
-    4.  **Handle "Latest" Data:** If the task requires the "latest" data, I will find the correct date column from the Golden Schema and use `ORDER BY [correct_date_column] DESC LIMIT 1`.
-    5.  **Handle Entity Filtering:** If an `entity_name` is provided, I MUST use a subquery to find its `fincode`: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
-    6.  **Verify & Formulate:** I will build the query using ONLY columns from the provided schemas and will not invent names.
+    1.  **Prioritize Golden Schema:** I will first read the Golden Schema. If there is a conflict, the Golden Schema is ALWAYS correct. For "Promoter Shareholding", I MUST use `psh_f_total_promoter`.
+
+    2.  **Efficient Joins:** I will only `JOIN` with `company_master` if I need the `compname`. If the primary data (like `psh_f_total_promoter`) and the `fincode` for filtering exist in the same table, I will query that table directly to keep the query simple and efficient.
+
+    3.  **Entity Identification & Filtering:**
+        - If the `entity_name` is specific (e.g., 'Reliance Industries'), I MUST find its `fincode` using a subquery: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
+
+    4.  **Handle Ranking Queries:** If the `entity_name` is 'General Query' (like for a "top 5" ranking), I MUST NOT add a `WHERE` clause to filter by company name.
+
+    5.  **Handle "Latest" Data for Rankings:** For a ranking query, I need the latest data for ALL companies. I will join on a subquery that finds the latest `year_end` for each `fincode`, for example: `JOIN (SELECT fincode, MAX(year_end) as max_year FROM company_equity GROUP BY fincode) latest ON ce.fincode = latest.fincode AND ce.year_end = latest.max_year`.
+
+    6.  **Handle "Latest" Data for a Single Entity:** For one company, I will use `ORDER BY [date_column] DESC LIMIT 1`.
+
+    7.  **Verify & Formulate:** I will build the query using ONLY columns from the schemas and prefix ambiguous columns with their table alias.
 
     --- SCHEMA CONTEXT ---
     -- Golden Schema & High-Level Database Guide --
@@ -143,6 +151,7 @@ WRITE_QUERY_PROMPT = """
     Now, following my thought process and all rules, I will write the SQL query as a single JSON object.
 """
 
+
 ANSWER_COMPOSER_PROMPT = """
     You are IRIS, a financial assistant. Synthesize a single, cohesive, and natural language answer based on the user's question and the data provided.
 
@@ -155,7 +164,8 @@ ANSWER_COMPOSER_PROMPT = """
     2.  **Indian Numbering System:** All large numerical values MUST be formatted for an Indian audience using 'Lakhs' and 'Crores'. For example, 15,000,000 should be '1.5 Crores' and 500,000 should be '5 Lakhs'. Do not use 'millions' or 'billions'.
     3.  **Full Company Names:** Always use the full company name (e.g., the `compname` value) from the results, not just the short name from the user's question.
 
-    **Content Rules:**
+    **CONTENT RULES:**
+    - **Handle Multiple Results:** If the `Query Results` JSON has multiple top-level keys (e.g., one for "Reliance Industries" and one for "ABB India"), you must combine the information for each key into a single, flowing answer.
     - If the result is a list (like a list of industries), format it as a clean, bulleted list.
     - If results are available, use them to directly answer the user's question.
     - If a query result contains an error, explain the problem clearly and politely.

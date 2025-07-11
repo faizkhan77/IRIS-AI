@@ -284,21 +284,30 @@ if __name__ == "__main__":
             print(f"User: {test_user}, Thread: {thread_id}")
 
             test_interactions = [
-                 "Hello IRIS!",
-                "Please remember my favorite stock is TSLA.",
-               "What is RSI?", # General Explanation
-            "Is Reliance overbought?", # Vague -> Momentum -> RSI for Reliance
-         
-            "How volatile is Aegis Logistics now?", # Vague -> Volatility -> ATR
-          
-            "Calculate the MACD for fincode 500209", # Explicit
-            "VWAP for non_existent_stock_xyz", # Fincode resolution failure
-            "Supertrend for fincode 9999999", # No data failure
-            "What is the Parabolic SAR for Reliance Industries?", # Explicit
-            "stochastic for Ambalal Sarabhai", # Explicit
-            "Who invented the radio?", # OOD
-            "Is Reliance strong?", # Vague -> Strength -> ADX
-            "Should I buy reliance based on bollinger bands?" 
+                # technicals questions
+                "What is RSI?", 
+                "Is Reliance overbought?", 
+                "How volatile is Aegis Logistics now?", 
+                "stochastic for Ambalal Sarabhai", 
+                "Is Reliance strong?", 
+                "Should i buy Ambalal Sarabhai?",
+                "Should I buy reliance based on Bollinger Bands",
+                "Should I buy reliance based on RSI?", 
+                "Should I buy reliance based on MACD?",
+                "Should I buy Aegis Logistics based on RSI, MACD, and Supertrend?", # Explicit multi-indicator
+                "Is Reliance a good buy right now?", # General outlook, should trigger default aggregation
+
+                # fundamentals questions
+                "What is the market cap of Reliance Industries and the latest sales for ABB India?",
+                "What is the business description of Ambalal Sarabhai?",
+                "What are the top 5 companies by market cap?",
+                "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
+                "Scripcode and fincode of ABB India",
+                "What is the latest promoter shareholding percentage for Reliance Industries?",
+                "List all distinct industries",
+
+                # sentimental questions
+                "Latest news sentiment of Reliance Industries",
 
             ]
 
