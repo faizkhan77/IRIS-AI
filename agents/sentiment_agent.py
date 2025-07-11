@@ -91,33 +91,33 @@ def clean_tavily_content(raw_content: str) -> str:
     return re.sub(r'\s{2,}', ' ', cleaned).strip() # Normalize whitespace
 
 async def extract_company_node(state: AgentState) -> Dict[str, Any]:
-    """OPTIMIZED: Reliably extracts the company name using a structured LLM call."""
+    """Reliably extracts the company name using a structured LLM call."""
     print("---NODE: Extract Company Name (Structured)---")
     query = state["query"]
     
+    # <<< MAJOR FIX: The prompt is updated to give the LLM crucial context.
     prompt = f"""
-    Analyze the following user query to identify the primary company or stock ticker that is the subject of the sentiment analysis request.
+    You are an expert financial assistant inside a **Stock Sentiment Analysis Agent**.
+    Your primary function is to identify the company name or stock ticker from the user's query.
+    Because you are a specialized stock analysis agent, you should **assume the user's query is about a company's stock sentiment** even if they don't explicitly use words like "stock", "shares", or "ticker".
 
     User Query: "{query}"
 
-    Think step-by-step:
-    1. Read the query carefully. What is the user asking about?
-    2. Is there a clear, specific company name (e.g., "Microsoft", "Aegis Logistics") or a stock ticker (e.g., "GOOGL", "TSLA") mentioned?
-    3. If so, extract that name or ticker exactly.
-    4. If the query is general (e.g., "what's the market sentiment today?"), then there is no specific company.
-    5. Formulate your reasoning and then provide the final extracted name.
-    
+    Analyze the user's query and extract the company name or ticker.
+    - If the user asks for "sentiment for Reliance", the company is "Reliance".
+    - If the user asks for "AAPL sentiment", the company is "AAPL".
+    - If the query is general like "how is the market?", there is no specific company.
+
     Provide your output in a valid JSON format matching the `ExtractedCompany` schema.
     """
     
     try:
         structured_llm = groq_llm.with_structured_output(ExtractedCompany, method="json_mode")
         extraction_result = await structured_llm.ainvoke(prompt)
-        company_name = extraction_result.company_name
         
-        # --- THIS IS THE FIX ---
-        # Convert the Pydantic object to a dict before logging/returning
+        company_name = extraction_result.company_name
         reasoning = extraction_result.reasoning
+        
         print(f"Extraction Reasoning: {reasoning}")
         print(f"Extracted Company Name: {company_name}")
         
@@ -134,6 +134,7 @@ async def extract_company_node(state: AgentState) -> Dict[str, Any]:
             "company_name": None,
             "final_answer": "I had trouble understanding which company you're asking about. Please try rephrasing your request."
         }
+
 async def tavily_search_node(state: AgentState) -> Dict[str, List]:
     """OPTIMIZED: Asynchronously searches Tavily for financial news."""
     print("---NODE: Tavily Search (Async)---")

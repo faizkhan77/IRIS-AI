@@ -1,7 +1,7 @@
 # tools/technical_indicators.py
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 # --- Helper Function to Standardize Price Data ---
 
@@ -54,11 +54,10 @@ def _convert_to_dataframe_and_standardize(
         return None
         
     return df
-
 # --- Indicator Calculation Functions (Manual Implementations) ---
 
 def calculate_rsi(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculates RSI (Relative Strength Index) manually."""
+    """Calculates RSI and provides a standardized buy/sell/neutral signal."""
     period = 14
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
@@ -88,7 +87,7 @@ def calculate_rsi(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, A
                 return {"error": "RSI calculation resulted in NaN."}
         
         signal = "neutral"
-        if latest_rsi < 30: signal = "buy" # Oversold
+        if latest_rsi < 30: signal = "buy"  # Oversold
         elif latest_rsi > 70: signal = "sell" # Overbought
         
         return {"rsi": round(latest_rsi, 2), "signal": signal}
@@ -97,6 +96,7 @@ def calculate_rsi(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, A
 
 
 def calculate_ema(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculates EMA and provides a standardized signal based on price vs EMA."""
     period = 20
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
@@ -114,17 +114,15 @@ def calculate_ema(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, A
             return {"error": "EMA calculation resulted in NaN."}
 
         signal = "neutral"
-        # EMA crossover logic is more complex, requiring multiple EMAs or price vs EMA.
-        # Simple signal: if price is above EMA, bullish tendency; below, bearish.
-        if latest_close > latest_ema: signal = "buy_bias" # General bullish bias
-        elif latest_close < latest_ema: signal = "sell_bias" # General bearish bias
+        if latest_close > latest_ema: signal = "buy"
+        elif latest_close < latest_ema: signal = "sell"
         
         return {"ema": round(latest_ema, 2), "signal": signal, "note": "Signal is price vs EMA; for crossovers, use MACD or multiple EMAs."}
     except Exception as e:
         return {"error": f"Error during manual EMA calculation: {str(e)}"}
 
-
 def calculate_bollinger_bands(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculates Bollinger Bands and provides a standardized signal."""
     period = 20
     std_dev_multiplier = 2.0
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
@@ -143,21 +141,18 @@ def calculate_bollinger_bands(price_data_list_of_dicts: List[Dict[str, Any]]) ->
 
         latest_close = df['close'].iloc[-1]
         lb = lower_band.iloc[-1]
-        mb = middle_band.iloc[-1]
         ub = upper_band.iloc[-1]
 
-        if pd.isna(lb) or pd.isna(mb) or pd.isna(ub):
+        if pd.isna(lb) or pd.isna(ub):
             return {"error": "Bollinger Bands calculation resulted in NaN values."}
 
         signal = "neutral"
         if latest_close < lb: signal = "buy" # Price touched/crossed lower band
         elif latest_close > ub: signal = "sell" # Price touched/crossed upper band
-        elif latest_close > mb and latest_close < ub : signal = "hold_bullish_range" # In upper half
-        elif latest_close < mb and latest_close > lb : signal = "hold_bearish_range" # In lower half
-
+        
         return {
             "lower_band": round(lb, 2),
-            "middle_band": round(mb, 2),
+            "middle_band": round(middle_band.iloc[-1], 2),
             "upper_band": round(ub, 2),
             "signal": signal
         }
@@ -165,6 +160,7 @@ def calculate_bollinger_bands(price_data_list_of_dicts: List[Dict[str, Any]]) ->
         return {"error": f"Error during manual Bollinger Bands calculation: {str(e)}"}
 
 def calculate_atr(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculates ATR. As a volatility measure, its signal is 'neutral' for aggregation."""
     period = 14
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
@@ -185,36 +181,31 @@ def calculate_atr(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, A
         
         if pd.isna(latest_atr):
             return {"error": "ATR calculation failed or resulted in NaN."}
-        # ATR itself doesn't give buy/sell signals but indicates volatility.
-        return {"atr": round(latest_atr, 4), "signal": "volatility_measure", "note": "Higher ATR means higher volatility."}
+        
+        return {"atr": round(latest_atr, 4), "signal": "neutral", "note": "This is a volatility measure, not a directional signal. Higher ATR means higher volatility."}
     except Exception as e:
         return {"error": f"Error during manual ATR calculation: {str(e)}"}
 
 def calculate_macd(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    fast_period = 12
-    slow_period = 26
-    signal_period = 9
+    """Calculates MACD and provides a standardized signal based on crossovers and histogram."""
+    fast_period, slow_period, signal_period = 12, 26, 9
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
     if df is None or 'close' not in df.columns:
         return {"error": "MACD calculation requires 'close' price data."}
-    if len(df) < slow_period + signal_period: # Heuristic
+    if len(df) < slow_period + signal_period:
         return {"error": f"Insufficient data for MACD (need ~{slow_period + signal_period} periods, got {len(df)})."}
 
     try:
-        ema_fast = df['close'].ewm(span=fast_period, adjust=False, min_periods=fast_period).mean()
-        ema_slow = df['close'].ewm(span=slow_period, adjust=False, min_periods=slow_period).mean()
-        
+        ema_fast = df['close'].ewm(span=fast_period, adjust=False).mean()
+        ema_slow = df['close'].ewm(span=slow_period, adjust=False).mean()
         macd_line = ema_fast - ema_slow
-        signal_line = macd_line.ewm(span=signal_period, adjust=False, min_periods=signal_period).mean()
+        signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
         histogram = macd_line - signal_line
 
-        ml = macd_line.iloc[-1]
-        sl = signal_line.iloc[-1]
-        hist = histogram.iloc[-1]
+        ml, sl, hist = macd_line.iloc[-1], signal_line.iloc[-1], histogram.iloc[-1]
         prev_ml = macd_line.iloc[-2] if len(macd_line) > 1 else np.nan
         prev_sl = signal_line.iloc[-2] if len(signal_line) > 1 else np.nan
-
 
         if pd.isna(ml) or pd.isna(sl) or pd.isna(hist):
             return {"error": "MACD calculation resulted in NaN values."}
@@ -222,26 +213,21 @@ def calculate_macd(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, 
         signal = "neutral"
         # Bullish Crossover: MACD line crosses above Signal line
         if not pd.isna(prev_ml) and not pd.isna(prev_sl) and prev_ml <= prev_sl and ml > sl:
-            signal = "buy"
+            signal = "strong_buy"
         # Bearish Crossover: MACD line crosses below Signal line
         elif not pd.isna(prev_ml) and not pd.isna(prev_sl) and prev_ml >= prev_sl and ml < sl:
-            signal = "sell"
-        # General tendency based on histogram or MACD vs zero
-        elif ml > 0 and sl > 0 and hist > 0: signal = "hold_bullish"
-        elif ml < 0 and sl < 0 and hist < 0: signal = "hold_bearish"
+            signal = "strong_sell"
+        # General tendency based on position vs zero line
+        elif ml > 0 and sl > 0: signal = "buy"
+        elif ml < 0 and sl < 0: signal = "sell"
         
-        return {
-            "macd_line": round(ml, 4),
-            "histogram": round(hist, 4),
-            "signal_line": round(sl, 4),
-            "signal": signal
-        }
+        return {"macd_line": round(ml, 4), "signal_line": round(sl, 4), "histogram": round(hist, 4), "signal": signal}
     except Exception as e:
         return {"error": f"Error during manual MACD calculation: {str(e)}"}
 
 def calculate_adx(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    di_len = 14
-    adx_len = 14
+    """Calculates ADX and provides a standardized signal for trend strength and direction."""
+    di_len, adx_len = 14, 14
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
     required_cols = ['high', 'low', 'close']
@@ -251,60 +237,39 @@ def calculate_adx(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, A
         return {"error": f"Insufficient data for ADX (need ~{di_len + adx_len} periods, got {len(df)})."}
 
     try:
-        high_low = df['high'] - df['low']
-        high_prev_close = abs(df['high'] - df['close'].shift(1))
-        low_prev_close = abs(df['low'] - df['close'].shift(1))
-        tr = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
-        atr = tr.ewm(com=di_len - 1, adjust=False, min_periods=di_len).mean()
-
-        move_up = df['high'].diff()
-        move_down = -df['low'].diff()
-
+        tr = (df['high'] - df['low']).combine_first(abs(df['high'] - df['close'].shift(1))).combine_first(abs(df['low'] - df['close'].shift(1)))
+        atr = tr.ewm(com=di_len - 1, adjust=False).mean()
+        
+        move_up, move_down = df['high'].diff(), -df['low'].diff()
         plus_dm = pd.Series(np.where((move_up > move_down) & (move_up > 0), move_up, 0.0), index=df.index)
         minus_dm = pd.Series(np.where((move_down > move_up) & (move_down > 0), move_down, 0.0), index=df.index)
-
-        plus_di_smooth = plus_dm.ewm(com=di_len - 1, adjust=False, min_periods=di_len).mean()
-        minus_di_smooth = minus_dm.ewm(com=di_len - 1, adjust=False, min_periods=di_len).mean()
         
-        # Add small epsilon to atr to prevent division by zero if atr is exactly 0
-        epsilon = 1e-9 
-        plus_di = (plus_di_smooth / (atr + epsilon)) * 100
-        minus_di = (minus_di_smooth / (atr + epsilon)) * 100
+        plus_di = 100 * (plus_dm.ewm(com=di_len - 1, adjust=False).mean() / atr.replace(0, np.nan))
+        minus_di = 100 * (minus_dm.ewm(com=di_len - 1, adjust=False).mean() / atr.replace(0, np.nan))
         
-        # For DX, if (plus_di + minus_di) is zero, DX is conventionally 0 or 100 depending on definition.
-        # Here, setting to 0 if sum is 0 to avoid NaN/Inf.
-        dx_denominator = (plus_di + minus_di).replace(0, np.nan) # Avoid division by zero
-        dx = (abs(plus_di - minus_di) / dx_denominator) * 100
-        dx.fillna(0, inplace=True) # If plus_di + minus_di was 0, dx becomes 0.
+        dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan))
+        adx = dx.ewm(com=adx_len - 1, adjust=False).mean()
 
-        adx = dx.ewm(com=adx_len - 1, adjust=False, min_periods=adx_len).mean()
+        latest_adx, latest_pdi, latest_mdi = adx.iloc[-1], plus_di.iloc[-1], minus_di.iloc[-1]
         
-        latest_adx = adx.iloc[-1]
-        latest_pdi = plus_di.iloc[-1]
-        latest_mdi = minus_di.iloc[-1]
-
         if pd.isna(latest_adx) or pd.isna(latest_pdi) or pd.isna(latest_mdi):
              return {"error": "ADX calculation resulted in NaN values."}
 
-        signal = "weak_trend_or_ranging"
+        signal = "neutral"
         if latest_adx > 25:
-            if latest_pdi > latest_mdi: signal = "strong_uptrend"
-            else: signal = "strong_downtrend"
+            if latest_pdi > latest_mdi: signal = "strong_buy"
+            else: signal = "strong_sell"
         elif latest_adx < 20:
-            signal = "weak_trend_or_ranging"
+            signal = "neutral" # Weak trend
         
-        return {
-            "adx": round(latest_adx, 2),
-            "plus_di": round(latest_pdi, 2),
-            "minus_di": round(latest_mdi, 2),
-            "signal": signal
-        }
+        return {"adx": round(latest_adx, 2), "plus_di": round(latest_pdi, 2), "minus_di": round(latest_mdi, 2), "signal": signal}
     except Exception as e:
         return {"error": f"Error during manual ADX calculation: {str(e)}"}
 
+
 def calculate_supertrend(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    atr_period = 10
-    multiplier = 3.0
+    """Calculates Supertrend and provides a standardized signal based on trend direction."""
+    atr_period, multiplier = 10, 3.0
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
     required_cols = ['high', 'low', 'close']
@@ -314,82 +279,45 @@ def calculate_supertrend(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict
         return {"error": f"Insufficient data for Supertrend (need {atr_period + 1} periods, got {len(df)})."}
 
     try:
+        # ATR Calculation
         high_low = df['high'] - df['low']
-        high_prev_close = abs(df['high'] - df['close'].shift(1))
-        low_prev_close = abs(df['low'] - df['close'].shift(1))
-        tr = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
-        atr = tr.ewm(com=atr_period - 1, adjust=False, min_periods=atr_period).mean()
-
-        basic_upper_band = (df['high'] + df['low']) / 2 + multiplier * atr
-        basic_lower_band = (df['high'] + df['low']) / 2 - multiplier * atr
-
-        supertrend = pd.Series(np.nan, index=df.index)
-        final_upper_band = basic_upper_band.copy()
-        final_lower_band = basic_lower_band.copy()
+        high_close = abs(df['high'] - df['close'].shift())
+        low_close = abs(df['low'] - df['close'].shift())
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr = tr.ewm(alpha=1/atr_period, adjust=False).mean()
         
-        # Initialize first supertrend value to avoid NaN issues in loop
-        if len(df) > 0:
-             supertrend.iloc[0] = final_upper_band.iloc[0] # Arbitrary start, will correct
+        # Supertrend Calculation
+        hl2 = (df['high'] + df['low']) / 2
+        final_upper_band = hl2 + (multiplier * atr)
+        final_lower_band = hl2 - (multiplier * atr)
+        
+        supertrend = pd.Series(np.nan, index=df.index)
+        trend = pd.Series(1, index=df.index) # Default to uptrend
 
         for i in range(1, len(df)):
-            if basic_upper_band.iloc[i] < final_upper_band.iloc[i-1] or df['close'].iloc[i-1] > final_upper_band.iloc[i-1]:
-                final_upper_band.iloc[i] = basic_upper_band.iloc[i]
+            if df['close'].iloc[i] > final_upper_band.iloc[i-1]:
+                trend.iloc[i] = 1
+            elif df['close'].iloc[i] < final_lower_band.iloc[i-1]:
+                trend.iloc[i] = -1
             else:
-                final_upper_band.iloc[i] = final_upper_band.iloc[i-1]
-
-            if basic_lower_band.iloc[i] > final_lower_band.iloc[i-1] or df['close'].iloc[i-1] < final_lower_band.iloc[i-1]:
-                final_lower_band.iloc[i] = basic_lower_band.iloc[i]
-            else:
-                final_lower_band.iloc[i] = final_lower_band.iloc[i-1]
-            
-            # Supertrend Logic
-            prev_supertrend = supertrend.iloc[i-1]
-            if pd.isna(prev_supertrend) and i > 0: # If previous is NaN, use earlier valid one or re-initialize
-                 # Fallback: if prior ST is NaN, re-evaluate based on current close vs bands
-                if df['close'].iloc[i] > final_upper_band.iloc[i]: # Trend might be up
-                    prev_supertrend = final_lower_band.iloc[i-1] # Assume prev was lower band
-                else: # Trend might be down
-                    prev_supertrend = final_upper_band.iloc[i-1] # Assume prev was upper band
-
-
-            if prev_supertrend == final_upper_band.iloc[i-1]: # Previous trend was down
-                if df['close'].iloc[i] <= final_upper_band.iloc[i]:
-                    supertrend.iloc[i] = final_upper_band.iloc[i]
-                else: # Close crossed above upper band
-                    supertrend.iloc[i] = final_lower_band.iloc[i]
-            elif prev_supertrend == final_lower_band.iloc[i-1]: # Previous trend was up
-                if df['close'].iloc[i] >= final_lower_band.iloc[i]:
-                    supertrend.iloc[i] = final_lower_band.iloc[i]
-                else: # Close crossed below lower band
-                    supertrend.iloc[i] = final_upper_band.iloc[i]
-            else: # Initial or ambiguous state, default based on close vs bands
-                 if df['close'].iloc[i] > final_upper_band.iloc[i]:
-                    supertrend.iloc[i] = final_lower_band.iloc[i]
-                 elif df['close'].iloc[i] < final_lower_band.iloc[i]:
-                    supertrend.iloc[i] = final_upper_band.iloc[i]
-                 else: # Inside bands, maintain previous trend direction if possible
-                    supertrend.iloc[i] = prev_supertrend # maintain
-
-        latest_st = supertrend.iloc[-1]
-        if pd.isna(latest_st):
-             # Try to resolve NaN from last ST value
-            if df['close'].iloc[-1] > final_upper_band.iloc[-1]: latest_st = final_lower_band.iloc[-1]
-            elif df['close'].iloc[-1] < final_lower_band.iloc[-1]: latest_st = final_upper_band.iloc[-1]
-            else: return {"error": "Supertrend calculation resulted in unresolvable NaN."}
+                trend.iloc[i] = trend.iloc[i-1]
+                if trend.iloc[i] == 1 and final_lower_band.iloc[i] < final_lower_band.iloc[i-1]:
+                    final_lower_band.iloc[i] = final_lower_band.iloc[i-1]
+                if trend.iloc[i] == -1 and final_upper_band.iloc[i] > final_upper_band.iloc[i-1]:
+                    final_upper_band.iloc[i] = final_upper_band.iloc[i-1]
         
-        trend_direction = "buy" if df['close'].iloc[-1] > latest_st else "sell"
+        supertrend = np.where(trend == 1, final_lower_band, final_upper_band)
+        
+        latest_st = supertrend[-1]
+        signal = "buy" if df['close'].iloc[-1] > latest_st else "sell"
 
-        return {
-            "supertrend_value": round(latest_st, 2),
-            "signal": trend_direction
-        }
+        return {"supertrend_value": round(latest_st, 2), "signal": signal}
     except Exception as e:
         return {"error": f"Error during manual Supertrend calculation: {str(e)}"}
 
 def calculate_ichimoku(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    tenkan_period = 9
-    kijun_period = 26
-    senkou_b_period = 52
+    """Calculates Ichimoku Cloud and provides a comprehensive, standardized signal."""
+    tenkan_period, kijun_period, senkou_b_period = 9, 26, 52
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
 
     required_cols = ['high', 'low', 'close']
@@ -399,58 +327,32 @@ def calculate_ichimoku(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[s
         return {"error": f"Insufficient data for Ichimoku (need {senkou_b_period} periods, got {len(df)})."}
 
     try:
-        tenkan_high = df['high'].rolling(window=tenkan_period).max()
-        tenkan_low = df['low'].rolling(window=tenkan_period).min()
-        tenkan_sen = (tenkan_high + tenkan_low) / 2
-
-        kijun_high = df['high'].rolling(window=kijun_period).max()
-        kijun_low = df['low'].rolling(window=kijun_period).min()
-        kijun_sen = (kijun_high + kijun_low) / 2
-
-        chikou_span_value = df['close'] # Current close value, plotted 26 periods back
-
-        senkou_span_a = (tenkan_sen + kijun_sen) / 2 # Plotted 26 periods ahead
+        tenkan_sen = (df['high'].rolling(window=tenkan_period).max() + df['low'].rolling(window=tenkan_period).min()) / 2
+        kijun_sen = (df['high'].rolling(window=kijun_period).max() + df['low'].rolling(window=kijun_period).min()) / 2
+        senkou_span_a = ((tenkan_sen + kijun_sen) / 2).shift(kijun_period)
+        senkou_span_b = ((df['high'].rolling(window=senkou_b_period).max() + df['low'].rolling(window=senkou_b_period).min()) / 2).shift(kijun_period)
+        chikou_span = df['close'].shift(-kijun_period)
         
-        senkou_b_high = df['high'].rolling(window=senkou_b_period).max()
-        senkou_b_low = df['low'].rolling(window=senkou_b_period).min()
-        senkou_span_b = (senkou_b_high + senkou_b_low) / 2 # Plotted 26 periods ahead
-        
-        ts = tenkan_sen.iloc[-1]
-        ks = kijun_sen.iloc[-1]
-        cs_val = chikou_span_value.iloc[-1]
-        sa = senkou_span_a.iloc[-1] # This is value for current date (to be plotted ahead)
-        sb = senkou_span_b.iloc[-1] # This is value for current date (to be plotted ahead)
         price = df['close'].iloc[-1]
-
-        # Chikou span comparison: current close vs close 26 periods ago
-        chikou_compared_to_past_price = df['close'].shift(kijun_period).iloc[-1] if len(df) > kijun_period else np.nan
-
-
-        if pd.isna(ts) or pd.isna(ks) or pd.isna(sa) or pd.isna(sb):
-             return {"error": "Ichimoku calculation resulted in NaN values for key components."}
+        ts, ks = tenkan_sen.iloc[-1], kijun_sen.iloc[-1]
+        sa, sb = senkou_span_a.iloc[-1], senkou_span_b.iloc[-1]
+        
+        if any(pd.isna(v) for v in [price, ts, ks, sa, sb]):
+            return {"error": "Ichimoku calculation resulted in NaN values."}
 
         signal = "neutral"
-        # Strong Buy: Price > Cloud (SA & SB), SA > SB (Cloud bullish), TS > KS (bullish crossover), CS > Past Price
-        if price > max(sa, sb) and sa > sb and ts > ks and (pd.isna(chikou_compared_to_past_price) or cs_val > chikou_compared_to_past_price):
-            signal = "strong_buy"
-        # Strong Sell: Price < Cloud (SA & SB), SA < SB (Cloud bearish), TS < KS (bearish crossover), CS < Past Price
-        elif price < min(sa, sb) and sa < sb and ts < ks and (pd.isna(chikou_compared_to_past_price) or cs_val < chikou_compared_to_past_price):
-            signal = "strong_sell"
-        # Weaker signals
-        elif ts > ks and price > max(sa,sb): signal = "buy_bias" # Tenkan/Kijun bullish cross, price above cloud
-        elif ts < ks and price < min(sa,sb): signal = "sell_bias" # Tenkan/Kijun bearish cross, price below cloud
+        if price > max(sa, sb) and ts > ks and sa > sb: signal = "strong_buy"
+        elif price < min(sa, sb) and ts < ks and sa < sb: signal = "strong_sell"
+        elif price > max(sa, sb): signal = "buy"
+        elif price < min(sa, sb): signal = "sell"
 
-        return {
-            "tenkan_sen": round(ts, 2),
-            "kijun_sen": round(ks, 2),
-            "senkou_span_a_current_value": round(sa, 2), # Value for current period, plotted ahead
-            "senkou_span_b_current_value": round(sb, 2), # Value for current period, plotted ahead
-            "chikou_span_current_value": round(cs_val, 2), # Value for current period, plotted behind
-            "signal": signal,
-            "note": "SA, SB, CS values are for current candle; their plot positions are shifted."
-        }
+        return {"tenkan_sen": round(ts, 2), "kijun_sen": round(ks, 2), "signal": signal}
     except Exception as e:
         return {"error": f"Error during manual Ichimoku Cloud calculation: {str(e)}"}
+
+
+# other indicator functions (parabolic_sar, williams_r, etc.) with standardized signals 
+
 
 def calculate_parabolic_sar(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
     initial_af = 0.02
@@ -617,7 +519,6 @@ def calculate_vwap(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, 
     except Exception as e:
         return {"error": f"Error during manual VWAP calculation: {str(e)}"}
 
-# --- New Indicators ---
 def calculate_stochastic_oscillator(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Calculates Stochastic Oscillator (%K and %D)."""
     k_period = 14  # Standard period for %K
@@ -724,7 +625,109 @@ def calculate_obv(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, A
     except Exception as e:
         return {"error": f"Error during manual OBV calculation: {str(e)}"}
 
-# --- Mapping indicator names to functions ---
+
+# --- NEW: Aggregation Function ---
+def aggregate_signals(
+    indicator_results: List[Tuple[str, Dict[str, Any]]],
+    time_period: str = '1d'
+) -> Dict[str, Any]:
+    """
+    Aggregates signals from multiple technical indicators into a single verdict.
+
+    Args:
+        indicator_results: A list of tuples, where each tuple contains the
+                           indicator name and its result dictionary.
+                           e.g., [('rsi', {'rsi': 35, 'signal': 'buy'}), 
+                                  ('macd', {'signal': 'sell', ...})]
+        time_period: The time frame of the analysis ('15m', '1h', '1d', '1w', '1m').
+                     This is used for weighting the indicators.
+
+    Returns:
+        A dictionary containing the overall verdict, a composite score,
+        and a breakdown of individual indicator signals and their contribution.
+    """
+    score_map = {
+        "strong_buy": 2,
+        "buy": 1,
+        "neutral": 0,
+        "sell": -1,
+        "strong_sell": -2
+    }
+
+    # Define which indicators fall into which category for weighting
+    momentum_indicators = {'rsi', 'stochastic', 'williamsr', 'macd'}
+    trend_indicators = {'ema', 'supertrend', 'ichimoku', 'parabolicsar', 'adx'}
+    
+    total_score = 0.0
+    total_weight = 0.0
+    breakdown = []
+
+    for name, result in indicator_results:
+        if "error" in result:
+            continue # Skip indicators that failed
+
+        signal = result.get("signal", "neutral")
+        score = score_map.get(signal, 0)
+        
+        # Determine weight based on time period
+        weight = 1.0
+        if time_period in ['15m', '1h'] and name in momentum_indicators:
+            weight = 1.5
+        elif time_period in ['1w', '1m'] and name in trend_indicators:
+            weight = 1.5
+            
+        total_score += score * weight
+        total_weight += weight
+        
+        breakdown.append({
+            "indicator": name,
+            "signal": signal,
+            "score": score,
+            "weight": weight
+        })
+
+    if total_weight == 0:
+        return {
+            "overall_verdict": "Neutral",
+            "composite_score": 0,
+            "summary": "No valid indicator signals to aggregate.",
+            "breakdown": breakdown
+        }
+
+    # Normalize the score by total weight to keep it in the -2 to 2 range
+    final_score = total_score / total_weight
+
+    # Determine overall verdict based on the final score
+    verdict = "Neutral"
+    if final_score >= 1.5: verdict = "Strong Sell" # Corrected: Positive score is Buy
+    elif final_score >= 0.5: verdict = "Buy"
+    elif final_score <= -1.5: verdict = "Strong Sell"
+    elif final_score <= -0.5: verdict = "Sell"
+    
+    # Corrected logic for verdict determination
+    if final_score >= 1.5:
+        verdict = "Strong Buy"
+    elif final_score >= 0.5:
+        verdict = "Buy"
+    elif final_score > -0.5:
+        verdict = "Neutral"
+    elif final_score > -1.5:
+        verdict = "Sell"
+    else: # score <= -1.5
+        verdict = "Strong Sell"
+
+
+    summary = (f"Aggregated signal from {len(breakdown)} indicators "
+               f"is '{verdict}' with a composite score of {final_score:.2f}.")
+
+    return {
+        "overall_verdict": verdict,
+        "composite_score": round(final_score, 2),
+        "summary": summary,
+        "breakdown": breakdown
+    }
+
+# Map of indicator names to their calculation functions
 INDICATOR_TOOLS_MAP = {
     "rsi": calculate_rsi,
     "ema": calculate_ema,
@@ -737,10 +740,18 @@ INDICATOR_TOOLS_MAP = {
     "parabolicsar": calculate_parabolic_sar,
     "williamsr": calculate_williams_r,
     "vwap": calculate_vwap,
-    "stochastic": calculate_stochastic_oscillator, # New
-    "stddev": calculate_standard_deviation,      # New
-    "obv": calculate_obv                         # New
+    "stochastic": calculate_stochastic_oscillator,
+    "stddev": calculate_standard_deviation,
+    "obv": calculate_obv
 }
+
+# Default set of indicators for a general "should I buy/sell" query
+AGGREGATION_DEFAULT_INDICATORS = [
+    "rsi",
+    "macd",
+    "supertrend",
+    "adx"
+]
 
 # Default indicators per category (for vague queries in technical_agent.py)
 # Categories: Momentum, Trend, Volatility, Volume, Other/Chart Patterns

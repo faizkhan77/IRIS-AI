@@ -1,17 +1,18 @@
 # fundamentals_agent.py
 import asyncio
-from typing import TypedDict, List, Union, Dict, Any, Optional
+from langgraph.graph import START, StateGraph, END
+from typing import TypedDict, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-# --- FIX 1: ADDED THIS MISSING IMPORT ---
-from sqlalchemy import text
-# --- END OF FIX ---
 import json
+from sqlalchemy import text
 
-from agents.rag_context_provider import get_rag_based_context
+# --- RAG INTEGRATION: Import the NEW intelligent context provider ---
+from agents.rag_context_provider import get_intelligent_context
+
+# Custom module imports
 from model_config import groq_llm
 from db_config import async_engine
-from langgraph.graph import StateGraph, END
 
 load_dotenv()
 
@@ -19,16 +20,23 @@ load_dotenv()
 class IdentifiedEntity(BaseModel):
     entity_name: str = Field(description="The name of the company/stock symbol identified.")
 
+
+class KnownSchema(BaseModel):
+    table: str = Field(description="The known table containing the required column.")
+    column: str = Field(description="The known column that directly answers the query.")
+
 class ExtractionOutput(BaseModel):
     is_database_required: bool = Field(description="Is database access required to answer the question?")
     entities: List[IdentifiedEntity] = Field(description="List of all unique financial entities found in the query.")
     tasks: Dict[str, str] = Field(description="A dictionary mapping each entity_name (or 'General Query') to a concise description of the data needed for it.")
+    known_schema_lookups: Optional[Dict[str, KnownSchema]] = Field(None, description="If a task can be answered by a single known column from the Golden Schema, map the task to its table and column here.")
 
 class GeneralizedQuery(BaseModel):
     generalized_question: str = Field(description="A generic question for RAG context retrieval, with specific entity names removed.")
 
 class SQLQuery(BaseModel):
     query: str = Field(description="A single, syntactically valid SQL query.")
+
 
 # --- Agent State ---
 class FundamentalsAgentState(TypedDict):
@@ -41,117 +49,124 @@ class FundamentalsAgentState(TypedDict):
     error_message: Optional[str]
     final_answer: str
 
-# --- Prompts ---
+# --- Prompts (Overhauled for Robustness) ---
+
+# This "Golden Schema" is a permanent guide for the LLM, reducing hallucination.
+GOLDEN_SCHEMA_CONTEXT = """
+    /*
+    -- Golden Schema & High-Level Database Guide --
+    1.  **Core Company Information:**
+        -   Table: `company_master`
+        -   Columns: `fincode` (primary key), `compname` (full company name), `scripcode`, `industry` (industry classification).
+    2.  **Finding "Latest" Data:**
+        -   `company_results`, `company_shareholders_details`: use `date_end`.
+        -   `company_board_director`: use `yrc`.
+        -   Most others (e.g., `company_equity_s`): use `year_end`.
+        -   `bse_abjusted_price_eod`: use `date`.
+    3.  **Key Data Points:**
+        -   Market Cap: `mcap` in `company_equity`.
+        -   Sales/Revenue: `net_sales` or `total_income` in `company_results`.
+        -   Promoter Shareholding: `psh_f_total_promoter` in `company_shareholding_pattern`.
+    */
+"""
+
+
 EXTRACT_PROMPT = """
-You are an expert financial data extraction assistant. Analyze the user's question to identify all financial entities and describe the task for each.
+    You are an expert financial data extraction assistant. Your most important task is to perform a Pre-Flight Check.
 
-User Question: {question}
+    --- Golden Schema ---
+    {golden_schema}
+    ---
 
-Your task is to produce a single JSON object matching the 'ExtractionOutput' schema.
-- `is_database_required`: Set to true if financial data from a database is needed. This includes requests for descriptions, details, or any specific data point about a company.
-- `entities`: A list of all distinct company names or stock symbols.
-- `tasks`: A dictionary mapping each entity's name to a concise task description. For non-entity questions, use the key "General Query".
+    First, analyze the user's question. Can it be answered by a single known column in the Golden Schema?
+    - "List all distinct industries" -> YES, `industry` from `company_master`.
+    - "What are the scrip codes?" -> YES, `scripcode` from `company_master`.
+    - "Market cap of company ABC?" -> NO, this requires a join and filter.
 
---- EXAMPLES ---
-User Question: "What is the market cap of Reliance and latest sales of Infosys?"
-Your Output:
-{{
-  "is_database_required": true,
-  "entities": [{{"entity_name": "Reliance"}}, {{"entity_name": "Infosys"}}],
-  "tasks": {{
-      "Reliance": "market capitalization of Reliance",
-      "Infosys": "latest sales figures for Infosys"
-  }}
-}}
+    Now, process the user's question and produce a single JSON object matching the 'ExtractionOutput' schema.
 
-User Question: "Tell me about Ambalal Sarabhai's business."
-Your Output:
-{{
-  "is_database_required": true,
-  "entities": [{{"entity_name": "Ambalal Sarabhai"}}],
-  "tasks": {{
-      "Ambalal Sarabhai": "business description of Ambalal Sarabhai"
-  }}
-}}
+    Rules:
+    1.  **Pre-Flight Check (MANDATORY):** If the check above is YES, you MUST populate the `known_schema_lookups` field. The key should be "General Query" and the value should be the table and column. If the check is NO, `known_schema_lookups` MUST be null.
+    2.  `is_database_required`: Set to true if financial data is needed.
+    3.  `entities`: A list of all distinct company names or stock symbols.
+    4.  `tasks`: A dictionary mapping each entity's name to a concise task description. For non-entity questions, use the key "General Query".
 
-User Question: "List all distinct industries"
-Your Output:
-{{
-  "is_database_required": true,
-  "entities": [],
-  "tasks": {{ "General Query": "List all distinct industries from the database" }}
-}}
+    --- EXAMPLES ---
+    User Question: "List all distinct industries"
+    Your Output: {{"is_database_required": true, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
 
-User Question: "Hello, how are you?"
-Your Output:
-{{
-  "is_database_required": false,
-  "entities": [],
-  "tasks": {{ "General Query": "General greeting" }}
-}}
----
-
-Output ONLY the valid JSON object.
+    User Question: "What is the market cap of Company ABC?"
+    Your Output: {{"is_database_required": true, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
+    ---
+    User Question: {question}
+    Output ONLY the valid JSON object.
 """
 
 GENERALIZE_TASK_PROMPT = """
-You are a query transformation assistant. Rephrase a specific user request into a generic question suitable for a RAG system to find relevant database schema. Remove all specific entity names.
+    You are a query transformation assistant. Rephrase a specific user request into a generic question suitable for a RAG system to find relevant database schema. Remove all specific entity names.
+    **If the user's task implies getting the 'latest' or 'most recent' data (e.g., 'latest sales'), you MUST include keywords like 'latest current date year period' in your generalized question.**
 
-Produce a JSON object matching the `GeneralizedQuery` schema.
+    --- EXAMPLES ---
+    Specific Task: "latest market capitalization of a company"
+    Your Output: {{"generalized_question": "tables and columns for latest current market capitalization mcap date year"}}
 
---- EXAMPLES ---
-Specific Task: "market cap of Reliance Industries"
-Your Output: {{"generalized_question": "which tables and columns are needed to calculate a company's market capitalization?"}}
-
-Specific Task: "business description of Ambalal Sarabhai"
-Your Output: {{"generalized_question": "which table and column contains the business description of a company?"}}
----
-
-Specific Task: {specific_taclsk}
-Your Output:
+    Specific Task: "business description of a company"
+    Your Output: {{"generalized_question": "table and column for company business details description"}}
+    ---
+    Specific Task: {specific_task}
+    Your Output:
 """
 
 WRITE_QUERY_PROMPT = """
-You are an SQL query writing expert. Given a task, a user question, and relevant database schema, create ONE syntactically correct SQL query.
+    You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query.
 
-Original User Question: "{original_question}"
-Current Task: "{current_task}"
-Entity Name (if applicable): "{entity_name}"
+    --- THOUGHT PROCESS (You MUST follow this) ---
+    1.  **Consult the Guide:** I will first read the "Golden Schema & High-Level Database Guide".
+    2.  **Analyze the Task & Context:** I will analyze the user's task and the Dynamic RAG Schema provided.
+    3.  **Select Full Company Name:** If the task involves a specific entity, I MUST `SELECT compname` from `company_master` to get the full name, in addition to the primary data point.
+    4.  **Handle "Latest" Data:** If the task requires the "latest" data, I will find the correct date column from the Golden Schema and use `ORDER BY [correct_date_column] DESC LIMIT 1`.
+    5.  **Handle Entity Filtering:** If an `entity_name` is provided, I MUST use a subquery to find its `fincode`: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
+    6.  **Verify & Formulate:** I will build the query using ONLY columns from the provided schemas and will not invent names.
 
---- SCHEMA CONTEXT (Your ONLY source for table/column names) ---
-{rag_context}
---- END SCHEMA CONTEXT ---
+    --- SCHEMA CONTEXT ---
+    -- Golden Schema & High-Level Database Guide --
+    {golden_schema}
+    -- Dynamic RAG Schema (Columns specific to this task) --
+    {rag_context}
+    --- END SCHEMA CONTEXT ---
 
-CRITICAL INSTRUCTION: If an `entity_name` is provided (and not 'General Query'), you MUST use a subquery to find its `fincode` from `company_master`.
-Example for `entity_name = "SomeCompany"`:
-`... WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%SomeCompany%' ORDER BY LENGTH(compname) ASC LIMIT 1)`
+    --- TASK ---
+    Original Question: "{original_question}"
+    Current Task: "{current_task}"
+    Entity Name (if applicable): "{entity_name}"
 
-Output MUST be a single, valid JSON object matching the `SQLQuery` schema.
+    Now, following my thought process and all rules, I will write the SQL query as a single JSON object.
 """
 
 ANSWER_COMPOSER_PROMPT = """
-You are IRIS, a financial assistant. Synthesize a single, cohesive, and natural language answer based on the user's question and the data provided.
+    You are IRIS, a financial assistant. Synthesize a single, cohesive, and natural language answer based on the user's question and the data provided.
 
-Original Question: "{question}"
+    --- Data Collected ---
+    Query Results (JSON format): {results_summary}
+    ---
 
---- Data Collected ---
-Tasks Identified: {tasks}
-Query Results: {results_summary}
----
+    **CRITICAL FORMATTING RULES:**
+    1.  **Direct Answer:** Do NOT write any introductory phrases like "Here is the answer:". Start the response directly.
+    2.  **Indian Numbering System:** All large numerical values MUST be formatted for an Indian audience using 'Lakhs' and 'Crores'. For example, 15,000,000 should be '1.5 Crores' and 500,000 should be '5 Lakhs'. Do not use 'millions' or 'billions'.
+    3.  **Full Company Names:** Always use the full company name (e.g., the `compname` value) from the results, not just the short name from the user's question.
 
-- If `Query Results` contains an error message, explain the problem clearly and politely.
-- If `Query Results` are available, use them to directly answer the user's question. Address all identified tasks.
-- If `Query Results` are empty but specific `Tasks Identified` exist (and it's not a greeting), it means data retrieval failed. Apologize and state that you could not retrieve the specific information.
-- If the task is a "General greeting", respond with a polite, friendly greeting.
-
-Be concise and do not mention SQL or how the data was retrieved.
+    **Content Rules:**
+    - If the result is a list (like a list of industries), format it as a clean, bulleted list.
+    - If results are available, use them to directly answer the user's question.
+    - If a query result contains an error, explain the problem clearly and politely.
 """
 
 # --- Agent Nodes ---
+
 async def extract_node(state: FundamentalsAgentState) -> Dict:
-    print("---NODE: Extract Entities & Tasks---")
-    prompt = EXTRACT_PROMPT.format(question=state["question"])
-    structured_llm = groq_llm.with_structured_output(ExtractionOutput)
+    print("---NODE: Extract Entities & Tasks (with Pre-Flight Check)---")
+    prompt = EXTRACT_PROMPT.format(question=state["question"], golden_schema=GOLDEN_SCHEMA_CONTEXT)
+    structured_llm = groq_llm.with_structured_output(ExtractionOutput, method="json_mode")
     try:
         result = await structured_llm.ainvoke(prompt)
         print(f"Extraction Result: {result.model_dump_json(indent=2)}")
@@ -162,24 +177,35 @@ async def extract_node(state: FundamentalsAgentState) -> Dict:
 async def parallel_generalize_and_rag_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Generalize & RAG---")
     tasks = state["extraction"].tasks
+    known_lookups = state["extraction"].known_schema_lookups or {}
+
     async def _generalize_and_fetch(task_key: str, specific_task: str):
+        if task_key in known_lookups:
+            known_info = known_lookups[task_key]
+            print(f"Pre-Flight Check successful for task '{specific_task}'. Bypassing RAG.")
+            perfect_context = f"Table: {known_info.table}\nRequired Columns:\n- {known_info.column}: The column that directly answers the query."
+            return task_key, "N/A (Known Schema)", perfect_context
+        
+        print(f"Pre-Flight Check failed for task '{specific_task}'. Proceeding with RAG.")
         try:
             gen_prompt = GENERALIZE_TASK_PROMPT.format(specific_task=specific_task)
             structured_llm = groq_llm.with_structured_output(GeneralizedQuery)
             gen_result = await structured_llm.ainvoke(gen_prompt)
             generalized_question = gen_result.generalized_question
             print(f"Task '{specific_task}' ==> Generalized: '{generalized_question}'")
-            rag_context = get_rag_based_context(generalized_question)
+            rag_context = await get_intelligent_context(generalized_question)
             return task_key, generalized_question, rag_context
         except Exception as e:
             print(f"Error processing task '{task_key}': {e}")
             return task_key, None, f"Error retrieving context for task: {specific_task}"
+
     coroutines = [_generalize_and_fetch(key, task) for key, task in tasks.items()]
     results = await asyncio.gather(*coroutines)
     generalized_tasks = {key: gen_q for key, gen_q, _ in results if gen_q}
     rag_contexts = {key: rag_c for key, _, rag_c in results if rag_c}
     return {"generalized_tasks": generalized_tasks, "rag_contexts": rag_contexts}
 
+# The rest of the nodes and graph definition remain the same as the previous correct version
 async def parallel_write_queries_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Write SQL Queries---")
     tasks = state["extraction"].tasks
@@ -187,8 +213,14 @@ async def parallel_write_queries_node(state: FundamentalsAgentState) -> Dict:
     question = state["question"]
     async def _write_one_query(task_key: str, task_desc: str):
         rag_context = rag_contexts.get(task_key, "No specific context found.")
-        prompt = WRITE_QUERY_PROMPT.format(original_question=question, current_task=task_desc, entity_name=task_key, rag_context=rag_context)
-        structured_llm = groq_llm.with_structured_output(SQLQuery)
+        prompt = WRITE_QUERY_PROMPT.format(
+            original_question=question,
+            current_task=task_desc,
+            entity_name=task_key,
+            golden_schema=GOLDEN_SCHEMA_CONTEXT,
+            rag_context=rag_context
+        )
+        structured_llm = groq_llm.with_structured_output(SQLQuery, method="json_mode")
         try:
             result = await structured_llm.ainvoke(prompt)
             print(f"Generated SQL for '{task_key}': {result.query}")
@@ -196,58 +228,47 @@ async def parallel_write_queries_node(state: FundamentalsAgentState) -> Dict:
         except Exception as e:
             error_msg = f"Error generating SQL for task '{task_desc}': {e}"
             print(error_msg)
-            return task_key, f"/* {error_msg} */ SELECT 'Error generating query';"
+            return task_key, f"/* {error_msg} */ SELECT 'Error: Could not generate a valid SQL query.';"
+            
     coroutines = [_write_one_query(key, task) for key, task in tasks.items()]
     results = await asyncio.gather(*coroutines)
-    sql_queries = {key: query for key, query in results}
-    return {"sql_queries": sql_queries}
+    return {"sql_queries": dict(results)}
 
 async def parallel_execute_queries_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Execute SQL Queries---")
     queries = state["sql_queries"]
     async def _execute_one_query(task_key: str, query: str):
-        if "Error generating query" in query:
+        if "Error" in query:
             return task_key, query
         try:
             async with async_engine.connect() as connection:
-                # The 'text' function is now imported and will work
                 result = await connection.execute(text(query))
                 rows = result.fetchall()
-            result_str = json.dumps([dict(row._mapping) for row in rows], indent=2)
-            print(f"Result for '{task_key}': {result_str[:200]}...")
+            result_str = json.dumps([dict(row._mapping) for row in rows], default=str) if rows else "[]"
+            print(f"Result for '{task_key}': {result_str[:250]}...")
             return task_key, result_str
         except Exception as e:
-            error_msg = f"Error executing SQL for '{task_key}': {e}"
+            error_msg = f"Error executing SQL for task '{task_key}': {str(e).strip()}"
             print(error_msg)
-            return task_key, error_msg
+            return task_key, f'{{"error": "Failed to execute query.", "details": "{json.dumps(error_msg)}"}}'
+            
     coroutines = [_execute_one_query(key, q) for key, q in queries.items()]
     results = await asyncio.gather(*coroutines)
-    query_results = {key: res for key, res in results}
-    return {"query_results": query_results}
+    return {"query_results": dict(results)}
 
 async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Compose Final Answer---")
     if state.get("error_message"):
         return {"final_answer": state["error_message"]}
-        
-    # --- FIX 2: ACCESS Pydantic ATTRIBUTES DIRECTLY ---
-    extraction_output = state.get("extraction")
-    if extraction_output:
-        tasks = extraction_output.tasks
-    else:
-        tasks = {}
-    # --- END OF FIX ---
     
     query_results = state.get("query_results", {})
     
+    results_summary = "No database results were retrieved."
     if query_results:
-        results_summary = "\n".join([f"- For '{key}':\n{res}" for key, res in query_results.items()])
-    else:
-        results_summary = "No database results were retrieved."
+        results_summary = json.dumps(query_results, indent=2)
 
     prompt = ANSWER_COMPOSER_PROMPT.format(
         question=state["question"],
-        tasks=json.dumps(tasks),
         results_summary=results_summary
     )
     response = await groq_llm.ainvoke(prompt)
@@ -257,43 +278,47 @@ async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
 def route_after_extraction(state: FundamentalsAgentState) -> str:
     if state.get("error_message"):
         return "end"
-    # Access Pydantic attribute directly
     if state["extraction"].is_database_required:
         return "db_path"
     else:
         return "general_path"
-
+        
 graph_builder = StateGraph(FundamentalsAgentState)
 graph_builder.add_node("extract", extract_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
 graph_builder.add_node("execute_queries", parallel_execute_queries_node)
 graph_builder.add_node("compose_answer", compose_final_answer_node)
+
 graph_builder.set_entry_point("extract")
-graph_builder.add_conditional_edges("extract", route_after_extraction, {"db_path": "generalize_and_rag", "general_path": "compose_answer", "end": END})
+graph_builder.add_conditional_edges("extract", route_after_extraction, {
+    "db_path": "generalize_and_rag", 
+    "general_path": "compose_answer", 
+    "end": END
+})
 graph_builder.add_edge("generalize_and_rag", "write_queries")
 graph_builder.add_edge("write_queries", "execute_queries")
 graph_builder.add_edge("execute_queries", "compose_answer")
 graph_builder.add_edge("compose_answer", END)
 app = graph_builder.compile()
 
+
+
 # --- Main Execution for Testing ---
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
-            "Hello there",
             "What is the market cap of Reliance Industries and the latest sales for ABB India?",
+            "What is the business description of Ambalal Sarabhai?",
+            "What are the top 5 companies by market cap?",
+            "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
+            "Scripcode and fincode of ABB India",
+            "What is the latest promoter shareholding percentage for Reliance Industries?",
             "List all distinct industries",
-            "Description of Ambalal Sarabhai",
-         
-        # "What is the market cap of Reliance Industries?",
-        # "What is the market cap of Reliance Industries and Aegis Logistics",
-        # "What are the top 5 companies by market cap?",
-        # "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
-        # "Scripcode and fincode of ABB India"
+
         ]
         for q_text in test_queries:
-            print(f"\n\n--- TESTING: \"{q_text}\" ---")
+            print(f"\n\n{'='*20} TESTING: \"{q_text}\" {'='*20}")
             inputs = {"question": q_text}
             try:
                 final_state = await app.ainvoke(inputs)

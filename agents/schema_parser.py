@@ -5,23 +5,15 @@ from typing import List, Dict, Any
 def parse_schema_markdown(markdown_content: str) -> List[Dict[str, Any]]:
     """
     Parses the schema markdown file into a structured list of column information.
-    
-    Args:
-        markdown_content: The string content of the table_context.md file.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a single column
-        and contains its table, name, and description.
     """
     print("Parsing schema markdown...")
     structured_data = []
     
-    # Regex to find each table block (from "### Table" to the next "### Table" or end of file)
+    # Regex to find each table block
     table_blocks = re.findall(r"### Table: `(.*?)`\n(.*?)(?=\n### Table:|\Z)", markdown_content, re.DOTALL)
     
     for table_name, block_content in table_blocks:
         # Regex to find each column line within the block
-        # Captures: 1=column_name, 2=description
         column_lines = re.findall(r"- \*\*(.*?)\*\*.*?: (.*?)\n", block_content)
         for col_name, col_desc in column_lines:
             structured_data.append({
@@ -34,22 +26,28 @@ def parse_schema_markdown(markdown_content: str) -> List[Dict[str, Any]]:
     return structured_data
 
 if __name__ == '__main__':
-    # Example usage for testing the parser directly
+    # Enhanced testing block
     try:
-        with open("context/table_context.md", "r") as f:
+        with open("context/table_context.md", "r", encoding="utf-8") as f:
             content = f.read()
         
         parsed_data = parse_schema_markdown(content)
         
-        print("\n--- Sample Parsed Data ---")
-        for item in parsed_data[:5]:
-            print(item)
-        print("...")
-        for item in parsed_data[-5:]:
-            print(item)
-        print("\nParser test successful.")
+        if parsed_data:
+            print("\n--- Sample Parsed Data ---")
+            print("First 3 items:")
+            for item in parsed_data[:3]:
+                print(item)
+            print("...")
+            print("Last 3 items:")
+            for item in parsed_data[-3:]:
+                print(item)
+            print(f"\nTotal items parsed: {len(parsed_data)}")
+            print("\nParser test successful.")
+        else:
+            print("\nWARNING: Parser did not return any data. Is 'context/table_context.md' empty or formatted incorrectly?")
 
     except FileNotFoundError:
-        print("\nERROR: Could not find 'context/table_context.md'. Make sure the path is correct.")
+        print("\nERROR: Could not find 'context/table_context.md'. Make sure the file exists and the path is correct.")
     except Exception as e:
-        print(f"\nAn error occurred: {e}")
+        print(f"\nAn unexpected error occurred: {e}")

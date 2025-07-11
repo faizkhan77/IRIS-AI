@@ -286,24 +286,19 @@ if __name__ == "__main__":
             test_interactions = [
                  "Hello IRIS!",
                 "Please remember my favorite stock is TSLA.",
-                "What is the RSI for Reliance Industries?",
-                "What did I say my favorite stock was?",
-                "Should I invest in Reliance now?",
-                "What is the market cap of Reliance Industries?",
-                "I prefer value investing",
-                "Adani",
-                "I mean Adani Enterprises",
-                "whats my investment style?",
-                "List all distinct industries",
-                "What's its current sentiment?",
-                "Is Aegis Logistics overbought?",
-                "What are the top 5 companies by market cap?",
-                "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
-                "How volatile is Aegis Logistics now?",
-                "Should I buy reliance based on bollinger bands?",
-                "Who invented the radio?",
-                "What is the scripcode and fincode of Amabalal Sarabhai stock?",
-                "Thank you!"
+               "What is RSI?", # General Explanation
+            "Is Reliance overbought?", # Vague -> Momentum -> RSI for Reliance
+         
+            "How volatile is Aegis Logistics now?", # Vague -> Volatility -> ATR
+          
+            "Calculate the MACD for fincode 500209", # Explicit
+            "VWAP for non_existent_stock_xyz", # Fincode resolution failure
+            "Supertrend for fincode 9999999", # No data failure
+            "What is the Parabolic SAR for Reliance Industries?", # Explicit
+            "stochastic for Ambalal Sarabhai", # Explicit
+            "Who invented the radio?", # OOD
+            "Is Reliance strong?", # Vague -> Strength -> ADX
+            "Should I buy reliance based on bollinger bands?" 
 
             ]
 
