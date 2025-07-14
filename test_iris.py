@@ -3,103 +3,106 @@ import os
 import sys
 import uuid
 import time
+import asyncio
+import threading
+import traceback
 from contextlib import contextmanager
 
-# --- Path Setup ---
-# Get the absolute path of the current script (test_iris.py, which is in root)
+# Path Setup
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Add ROOT_DIR to the beginning of sys.path
-# This ensures that when agents.iris is imported, its own non-relative imports
-# (like `import db_ltm` or `import model_config`) will find files in ROOT_DIR.
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-# The agents directory itself doesn't need to be added to sys.path separately
-# if we are importing like `from agents.iris import ...` because Python will
-# find the 'agents' package in ROOT_DIR.
-# current_dir = os.path.dirname(os.path.abspath(__file__)) # This is ROOT_DIR
-# agents_dir = os.path.join(ROOT_DIR, "agents")
-# if agents_dir not in sys.path:
-# sys.path.insert(0, agents_dir) # This line might actually be causing confusion or is redundant if ROOT_DIR is already first.
-# Let's remove the explicit agents_dir addition for now and rely on ROOT_DIR.
-
-from langgraph.checkpoint.sqlite import SqliteSaver
 from colorama import Fore, Style, init as colorama_init
+from agents.iris import IrisOrchestrator
+import db_ltm
 
-try:
-    from agents.iris import iris_graph_builder # This should find agents/iris.py
-    # db_ltm will be imported by agents.iris directly from ROOT_DIR
-except ImportError as e:
-    print(f"{Fore.RED}Error importing IRIS modules. Structure:")
-    print(f"ROOT_DIR expected: {ROOT_DIR}")
-    print(f"sys.path: {sys.path}")
-    print(f"Ensure 'agents' directory with '__init__.py' and 'iris.py' exists in ROOT_DIR.")
-    print(f"Ensure 'db_ltm.py' and 'model_config.py' exist in ROOT_DIR.")
-    print(f"Details: {e}{Style.RESET_ALL}")
-    sys.exit(1)
-try:
-    import db_ltm # For direct use in test script, should also find from ROOT_DIR
-except ImportError as e:
-    print(f"{Fore.RED}Error importing db_ltm directly in test_iris.py: {e}{Style.RESET_ALL}")
-    sys.exit(1)
-
-# Initialize Colorama
 colorama_init(autoreset=True)
+STM_CHECKPOINT_DB = "iris_stm_checkpoint.sqlite"
 
-# --- Configuration ---
-STM_CHECKPOINT_DB = "iris_stm_checkpoint_test.sqlite" # Use a separate DB for testing
-
-# --- Helper for Loading Animation ---
 @contextmanager
-def loading_animation(text="Processing"):
-    chars = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"] # Braille spinner
-    # chars = ["|", "/", "-", "\\"] # Simpler spinner
-    idx = 0
+def loading_animation(text="IRIS is thinking"):
+    # (Loading animation code is unchanged)
     stop_animation = False
-
+    spinner_thread = None
     def animate():
-        nonlocal idx
+        chars = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
+        idx = 0
         while not stop_animation:
             sys.stdout.write(f"\r{Fore.CYAN}{text} {chars[idx % len(chars)]} {Style.RESET_ALL}")
             sys.stdout.flush()
             idx += 1
             time.sleep(0.1)
-
-    import threading
-    spinner_thread = threading.Thread(target=animate)
-    spinner_thread.daemon = True # Allow main program to exit even if thread is still running
-    spinner_thread.start()
-    
     try:
+        spinner_thread = threading.Thread(target=animate)
+        spinner_thread.daemon = True
+        spinner_thread.start()
         yield
     finally:
         stop_animation = True
-        spinner_thread.join(timeout=0.5) # Give thread a moment to finish
-        sys.stdout.write(f"\r{' ' * (len(text) + 5)}\r") # Clear the animation line
+        if spinner_thread: spinner_thread.join(timeout=0.2)
+        sys.stdout.write(f"\r{' ' * (len(text) + 5)}\r")
         sys.stdout.flush()
 
-# --- Main Test Application ---
+def generate_graph_diagram(orchestrator):
+    """Generates a Mermaid syntax diagram of the LangGraph flow."""
+    try:
+        # Get the graph object from the compiled app
+        graph = orchestrator.app.get_graph()
+        
+        # Generate the Mermaid diagram string
+        mermaid_string = graph.draw_mermaid()
+        
+        # Save to a file
+        diagram_path = os.path.join(ROOT_DIR, "iris_graph_diagram.md")
+        with open(diagram_path, "w") as f:
+            f.write("### IRIS Agent Graph Diagram\n\n")
+            f.write("```mermaid\n")
+            f.write(mermaid_string)
+            f.write("\n```\n")
+        
+        print("\n" + "="*50)
+        print(f"{Fore.MAGENTA}Graph diagram has been generated!{Style.RESET_ALL}")
+        print(f"File saved to: {Style.BRIGHT}{diagram_path}{Style.RESET_ALL}")
+        print("You can view this file in a Markdown viewer that supports Mermaid (like VS Code with a Mermaid extension, or GitHub).")
+        print("="*50 + "\n")
+
+    except Exception as e:
+        print(f"{Fore.RED}Could not generate graph diagram: {e}{Style.RESET_ALL}")
+
+
+async def main_chat_loop():
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    async with AsyncSqliteSaver.from_conn_string(STM_CHECKPOINT_DB) as memory_checkpointer:
+        orchestrator = IrisOrchestrator(checkpointer=memory_checkpointer)
+        
+        # Generate the diagram after the orchestrator is initialized
+        generate_graph_diagram(orchestrator)
+        
+        user_id, thread_id = f"user_cli_{uuid.uuid4().hex[:6]}", f"thread_cli_{uuid.uuid4().hex[:8]}"
+        config = {"configurable": {"thread_id": thread_id}}
+        initial_payload = {"user_identifier": user_id, "thread_id": thread_id}
+        
+        print(f"{Fore.MAGENTA}IRIS Chat Session Initialized{Style.RESET_ALL}")
+        print(f"LTM User ID: {Style.BRIGHT}{user_id}{Style.RESET_ALL}")
+        print(f"STM Thread ID: {Style.BRIGHT}{thread_id}{Style.RESET_ALL}")
+        print("Type 'exit' or 'quit' to end the session.")
+        print("="*50 + "\n")
+
+        while True:
+            try:
+                user_query = input(f"{Fore.GREEN}You: {Style.RESET_ALL}")
+                if user_query.lower() in ["exit", "quit"]: break
+                if not user_query.strip(): continue
+                payload = {**initial_payload, "user_input": user_query}
+                with loading_animation():
+                    await orchestrator.ainvoke(payload, config)
+            except KeyboardInterrupt: break
+            except Exception as e:
+                print(f"{Fore.RED}\nAn unexpected error occurred: {e}")
+                traceback.print_exc()
+                break
+        print(f"\n{Fore.YELLOW}Ending session. Goodbye!{Style.RESET_ALL}")
 
 if __name__ == "__main__":
-    # Ensure necessary environment variables are set (e.g., GROQ_API_KEY, DB credentials if not default)
-    # The .env file should be loaded by iris.py or db_ltm.py already
-    if not os.getenv("GROQ_API_KEY"):
-        print(f"{Fore.RED}GROQ_API_KEY not found. Please set it in your .env file.{Style.RESET_ALL}")
-        sys.exit(1)
-    
-    # Check if DB LTM can be connected (optional pre-check)
-    try:
-        with db_ltm.engine.connect() as connection:
-            print(f"{Fore.GREEN}Successfully connected to LTM database ({db_ltm.DB_NAME}).{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}Failed to connect to LTM database: {e}")
-        print(f"Ensure MySQL is running and configured as per db_ltm.py.{Style.RESET_ALL}")
-        sys.exit(1)
-
-    run_iris_test_session()
-
-    # Cleanup the test STM database (optional)
-    # if os.path.exists(STM_CHECKPOINT_DB):
-    #     os.remove(STM_CHECKPOINT_DB)
-    #     print(f"\n{Fore.CYAN}Cleaned up test STM database: {STM_CHECKPOINT_DB}{Style.RESET_ALL}")
+    asyncio.run(main_chat_loop())

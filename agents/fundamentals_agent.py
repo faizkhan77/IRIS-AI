@@ -6,13 +6,15 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import json
 from sqlalchemy import text
-
+from sqlalchemy.ext.asyncio import create_async_engine
+from db_config import ASYNC_DATABASE_URL
 # --- RAG INTEGRATION: Import the NEW intelligent context provider ---
 from agents.rag_context_provider import get_intelligent_context
 
 # Custom module imports
 from model_config import groq_llm
 from db_config import async_engine
+
 
 load_dotenv()
 
@@ -53,20 +55,56 @@ class FundamentalsAgentState(TypedDict):
 
 # This "Golden Schema" is a permanent guide for the LLM, reducing hallucination.
 GOLDEN_SCHEMA_CONTEXT = """
-    /*
-    -- Golden Schema & High-Level Database Guide --
-    1.  **Core Company Information:**
-        -   Table: `company_master`
-        -   Columns: `fincode` (primary key), `compname` (full company name), `scripcode`, `industry` (industry classification).
-    2.  **Finding "Latest" Data:**
-        -   `company_results` and `company_shareholding_pattern`: use `date_end`.
-        -   Most others (e.g., `company_equity`): use `year_end`.
-    3.  **Key Data Points:**
-        -   Market Cap: `mcap` in `company_equity`.
-        -   Sales/Revenue: `net_sales` or `total_income` in `company_results`.
-        -   Promoter Shareholding: The definitive column is `tp_f_total_promoter` in `company_shareholding_pattern`.
-    */
+/*
+-- Golden Schema & High-Level Database Guide --
+
+1.  **Core Company Information:**
+    -   Table: `company_master`
+    -   Columns:
+        -   `fincode`: Unique company code (primary key)
+        -   `compname`: Full company name
+        -   `scripcode`: BSE code
+        -   `industry`: Industry classification
+
+2.  **Finding "Latest" Data or Date column names:**
+    -   Use `date_end` in:
+        - `company_results`
+        - `company_results_cons`
+        - `company_shareholders_details`
+        - `company_shareholding_pattern`
+    -   Use `year_end` in:
+        - `company_equity`
+        - `company_equity_cons`
+        - `company_finance_ratio`
+        - `company_finance_profitloss`
+        - `company_finance_profitloss_cons`
+    - Use `date` in:
+        - `bse_abjusted_price_eod`
+
+3.  **Key Data Points:**
+    -   Market Cap: `mcap` in `company_equity`
+    -   Sales/Revenue: `net_sales` or `total_income` in `company_results`
+    -   Promoter Shareholding: `tp_f_total_promoter` in `company_shareholding_pattern`
+
+4.  **Pricing Values Tables:**
+    -   For retrieving price-related values (like open, high, low, close, volume, or value traded), the following tables use similar column names:
+        - `bse_indices_price_eod`
+        - `monthly_price_bse`
+        - `monthly_price_nse`
+        - `bse_abjusted_price_eod`
+
+5.  **bse_abjusted_price_eod Table Schema (Adjusted BSE Daily Prices):**
+    -   `fincode` (int): Unique company code
+    -   `scripcode` (int, optional): BSE scrip code
+    -   `open` (float, optional): Adjusted open price
+    -   `high` (float, optional): Adjusted high price
+    -   `low` (float, optional): Adjusted low price
+    -   `close` (float, optional): Adjusted close price
+    -   `volume` (float, optional): Number of shares traded
+    -   `value` (float, optional): Total value traded
+*/
 """
+
 
 
 EXTRACT_PROMPT = """
@@ -121,7 +159,7 @@ WRITE_QUERY_PROMPT = """
     You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query.
 
     --- THOUGHT PROCESS (You MUST follow this) ---
-    1.  **Prioritize Golden Schema:** I will first read the Golden Schema. If there is a conflict, the Golden Schema is ALWAYS correct. For "Promoter Shareholding", I MUST use `psh_f_total_promoter`.
+    1.  **Prioritize Golden Schema:** I will first read the Golden Schema. If there is a conflict, the Golden Schema is ALWAYS correct. For "Promoter Shareholding", I MUST use `tp_f_total_promoter`.
 
     2.  **Efficient Joins:** I will only `JOIN` with `company_master` if I need the `compname`. If the primary data (like `psh_f_total_promoter`) and the `fincode` for filtering exist in the same table, I will query that table directly to keep the query simple and efficient.
 
@@ -130,11 +168,11 @@ WRITE_QUERY_PROMPT = """
 
     4.  **Handle Ranking Queries:** If the `entity_name` is 'General Query' (like for a "top 5" ranking), I MUST NOT add a `WHERE` clause to filter by company name.
 
-    5.  **Handle "Latest" Data for Rankings:** For a ranking query, I need the latest data for ALL companies. I will join on a subquery that finds the latest `year_end` for each `fincode`, for example: `JOIN (SELECT fincode, MAX(year_end) as max_year FROM company_equity GROUP BY fincode) latest ON ce.fincode = latest.fincode AND ce.year_end = latest.max_year`.
+    5.  **Handle "Latest" Data for Rankings:** For ranking queries, I MUST determine the correct date column from the Golden Schema for each table (e.g., `date_end` or `year_end`). I will then join on a subquery that finds the latest value of that column per `fincode`, for example:
 
     6.  **Handle "Latest" Data for a Single Entity:** For one company, I will use `ORDER BY [date_column] DESC LIMIT 1`.
 
-    7.  **Verify & Formulate:** I will build the query using ONLY columns from the schemas and prefix ambiguous columns with their table alias.
+    7.  **Verify & Formulate:** I will build the query using ONLY columns explicitly found in the Golden Schema or the RAG context. I MUST NOT invent or assume any column name that is not mentioned in those sources.
 
     --- SCHEMA CONTEXT ---
     -- Golden Schema & High-Level Database Guide --
@@ -244,27 +282,48 @@ async def parallel_write_queries_node(state: FundamentalsAgentState) -> Dict:
     results = await asyncio.gather(*coroutines)
     return {"sql_queries": dict(results)}
 
+
 async def parallel_execute_queries_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Execute SQL Queries---")
+    
+    # R-NOTE: The engine is now created *inside* the function. This is the core fix.
+    # It ensures the engine and its connections belong to the currently active event loop.
+    async_engine = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    
     queries = state["sql_queries"]
+
     async def _execute_one_query(task_key: str, query: str):
         if "Error" in query:
-            return task_key, query
+            return task_key, f'{{"error": "Query generation failed.", "details": "{json.dumps(query)}"}}'
+        
         try:
+            # Use the locally created engine. This connection is now safe.
             async with async_engine.connect() as connection:
                 result = await connection.execute(text(query))
-                rows = result.fetchall()
-            result_str = json.dumps([dict(row._mapping) for row in rows], default=str) if rows else "[]"
+                # Use mappings() for direct dictionary conversion, which is cleaner.
+                rows = result.mappings().all()
+            
+            result_str = json.dumps([dict(row) for row in rows], default=str) if rows else "[]"
             print(f"Result for '{task_key}': {result_str[:250]}...")
             return task_key, result_str
         except Exception as e:
-            error_msg = f"Error executing SQL for task '{task_key}': {str(e).strip()}"
+            error_msg = f"Error executing SQL for task '{task_key}': {e!r}"
             print(error_msg)
+            # Ensure the error detail is a valid JSON string
             return task_key, f'{{"error": "Failed to execute query.", "details": "{json.dumps(error_msg)}"}}'
-            
+
+    # The rest of the logic can stay the same
     coroutines = [_execute_one_query(key, q) for key, q in queries.items()]
-    results = await asyncio.gather(*coroutines)
-    return {"query_results": dict(results)}
+    
+    try:
+        results = await asyncio.gather(*coroutines)
+        return {"query_results": dict(results)}
+    finally:
+        # R-NOTE: This is CRITICAL. We must dispose of the engine and its pool
+        # before the temporary event loop from asyncio.run() closes.
+        # This prevents the "Event loop is closed" errors during garbage collection.
+        print("--- Disposing of temporary database engine ---")
+        await async_engine.dispose()
 
 async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Compose Final Answer---")
@@ -318,6 +377,7 @@ app = graph_builder.compile()
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
+            "Is Reliance strong?",
             "What is the market cap of Reliance Industries and the latest sales for ABB India?",
             "What is the business description of Ambalal Sarabhai?",
             "What are the top 5 companies by market cap?",

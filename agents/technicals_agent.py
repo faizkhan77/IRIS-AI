@@ -9,6 +9,8 @@ from sqlalchemy import text
 import numpy as np
 from db_config import async_engine
 from model_config import groq_llm
+from sqlalchemy.ext.asyncio import create_async_engine 
+from db_config import ASYNC_DATABASE_URL
 
 from tools.technical_indicators import (
     INDICATOR_TOOLS_MAP,
@@ -185,39 +187,45 @@ async def extract_and_prepare_node(state: TechnicalAgentState) -> Dict:
         print(f"Critical error in extraction: {e}")
         return {"error_message": "I had trouble understanding your request. Could you please rephrase?"}
 
-async def resolve_fincode_node(state: TechnicalAgentState) -> Dict:
+
+async def resolve_fincode_node(state: Dict) -> Dict: # Using Dict for broader compatibility
     """Safely and accurately resolves a stock identifier to a fincode using parameterized queries."""
     print("---NODE: Resolve Fincode---")
-    stock_id = state["extraction_details"].stock_identifier
     
-    fincode_lookup_query = text("""
-        SELECT fincode FROM accord_base_live.company_master 
-        WHERE compname LIKE :like_id OR symbol = :exact_id OR fincode = :num_id OR scripcode = :num_id_str
-        ORDER BY 
-            CASE 
-                WHEN symbol = :exact_id THEN 0
-                WHEN compname = :exact_id THEN 1
-                WHEN compname LIKE :like_id_exact THEN 2
-                ELSE 3
-            END, 
-            LENGTH(compname) ASC 
-        LIMIT 1;
-    """)
-
+    # R-NOTE: The engine is now created *inside* the function, bound to the correct event loop.
+    async_engine = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    
     try:
-        num_id = int(stock_id)
-    except (ValueError, TypeError):
-        num_id = -1
+        stock_id = state["extraction_details"].stock_identifier
+        
+        fincode_lookup_query = text("""
+            SELECT fincode FROM accord_base_live.company_master 
+            WHERE compname LIKE :like_id OR symbol = :exact_id OR fincode = :num_id OR scripcode = :num_id_str
+            ORDER BY 
+                CASE 
+                    WHEN symbol = :exact_id THEN 0
+                    WHEN compname = :exact_id THEN 1
+                    WHEN compname LIKE :like_id_exact THEN 2
+                    ELSE 3
+                END, 
+                LENGTH(compname) ASC 
+            LIMIT 1;
+        """)
 
-    params = {
-        "like_id": f"%{stock_id}%",
-        "like_id_exact": f"{stock_id}%",
-        "exact_id": stock_id,
-        "num_id": num_id,
-        "num_id_str": str(num_id)
-    }
+        try:
+            num_id = int(stock_id)
+        except (ValueError, TypeError):
+            num_id = -1
 
-    try:
+        params = {
+            "like_id": f"%{stock_id}%",
+            "like_id_exact": f"{stock_id}%",
+            "exact_id": stock_id,
+            "num_id": num_id,
+            "num_id_str": str(num_id)
+        }
+
+        # The connection is now guaranteed to be on the correct loop
         async with async_engine.connect() as connection:
             result = await connection.execute(fincode_lookup_query, params)
             fincode = result.scalar_one_or_none()
@@ -230,34 +238,51 @@ async def resolve_fincode_node(state: TechnicalAgentState) -> Dict:
             
     except Exception as e:
         print(f"Database error during fincode resolution: {e}")
-        return {"error_message": f"A database error occurred while looking up '{stock_id}'."}
+        return {"error_message": f"A database error occurred while looking up the stock."}
+    finally:
+        # R-NOTE: CRITICAL - Dispose of the engine to clean up connections before the loop closes.
+        if 'async_engine' in locals():
+            print("--- Disposing of temporary database engine (fincode) ---")
+            await async_engine.dispose()
 
-async def fetch_price_data_node(state: TechnicalAgentState) -> Dict:
+
+# THIS IS THE NEW, CORRECTED VERSION of fetch_price_data_node
+async def fetch_price_data_node(state: Dict) -> Dict: # Using Dict for broader compatibility
     """Asynchronously fetches price data using a parameterized query."""
     print("---NODE: Fetch Price Data---")
-    fincode = state["target_fincode"]
     
-    price_query = text("""
-        SELECT date, open, high, low, close, volume 
-        FROM accord_base_live.bse_abjusted_price_eod 
-        WHERE fincode = :fincode ORDER BY date DESC LIMIT 300;
-    """)
-
+    # R-NOTE: Create a local engine instance for this function call as well.
+    async_engine = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    
     try:
+        fincode = state["target_fincode"]
+        
+        price_query = text("""
+            SELECT date, open, high, low, close, volume 
+            FROM accord_base_live.bse_abjusted_price_eod 
+            WHERE fincode = :fincode ORDER BY date DESC LIMIT 300;
+        """)
+
+        # This connection is also safe now.
         async with async_engine.connect() as connection:
             result = await connection.execute(price_query, {"fincode": fincode})
-            price_data = [dict(row._mapping) for row in result.all()]
+            # Use mappings() for clean dictionary conversion
+            price_data = [dict(row) for row in result.mappings().all()]
 
         if not price_data:
             return {"error_message": f"No price data found for the specified stock (fincode: {fincode})."}
         
-        price_data.reverse()
+        price_data.reverse() # Reverse to have oldest data first for calculations
         print(f"Fetched {len(price_data)} price records.")
         return {"price_data": price_data}
     except Exception as e:
         print(f"Database error fetching prices: {e}")
         return {"error_message": "A database error occurred while fetching price data."}
-
+    finally:
+        # R-NOTE: CRITICAL - Dispose of this engine as well.
+        if 'async_engine' in locals():
+            print("--- Disposing of temporary database engine (price) ---")
+            await async_engine.dispose()
 
 async def calculate_indicators_node(state: TechnicalAgentState) -> Dict:
     """Runs all requested indicator calculations in parallel for efficiency."""
