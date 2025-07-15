@@ -10,7 +10,13 @@ import pandas as pd
 import streamlit as st
 
 # --- Path Setup & Imports ---
+# Add the parent folder to sys.path
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+AGENTS_DIR = os.path.join(ROOT_DIR, "agents")
+
+if AGENTS_DIR not in sys.path:
+    sys.path.insert(0, AGENTS_DIR)
+
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
