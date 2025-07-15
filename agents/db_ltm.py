@@ -12,16 +12,26 @@ try:
     db_pool = pooling.MySQLConnectionPool(
         pool_name="iris_pool",
         pool_size=5,
-        host=os.getenv("DB_HOST", "45.114.142.157"),
-        port=int(os.getenv("DB_PORT", 3306)),
-        user=os.getenv("DB_USER", "devuser"),
-        password=os.getenv("DB_PASSWORD", "iris_agent"),
+        host="45.114.142.157",
+        port=3306,
+        user="devuser",
+        password="iris_agent",
         database="iris_long_term_memory"
     )
     print("MySQL Connection Pool for LTM created successfully.")
+
+    if db_pool:
+    try:
+        conn = db_pool.get_connection()
+        print("✅ Connection test successful.")
+        conn.close()
+    except Exception as e:
+        print("❌ Connection test failed:", e)
 except Error as e:
     print(f"Error while connecting to MySQL using Connection pool: {e}")
     db_pool = None
+
+
 
 def get_db_connection():
     """Gets a connection from the pool."""
