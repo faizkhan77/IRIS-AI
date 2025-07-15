@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 import numpy as np
 from db_config import async_engine
-from model_config import groq_llm
+from model_config import groq_llm, groq_llm_fast
 from sqlalchemy.ext.asyncio import create_async_engine 
 from db_config import ASYNC_DATABASE_URL
 
@@ -50,6 +50,7 @@ class ExtractedTechDetailsV2(BaseModel):
 # --- TypedDict for State ---
 class TechnicalAgentState(TypedDict):
     question: str
+    company_name: Optional[str] 
     extraction_details: Optional[ExtractedTechDetailsV2]
     target_fincode: Optional[int]
     price_data: Optional[TypingList[Dict[str, Any]]]
@@ -62,68 +63,82 @@ class TechnicalAgentState(TypedDict):
 
 # --- Prompts ---
 
-
 EXTRACT_QUERY_DETAILS_PROMPT_V2 = """
-    You are an expert financial analyst. Analyze the user's question about stock markets and technical indicators.
-    Your goal is to extract specific details to determine the best course of action.
-    Your output MUST be a single, valid JSON object matching the ExtractedTechDetailsV2 schema.
+You are an expert financial analyst. Your job is to meticulously analyze the user's question and extract key details into a JSON object matching the `ExtractedTechDetailsV2` schema.
 
-    Schema:
-    {{
-    "is_stock_market_related": "boolean",
-    "is_calculation_requested": "boolean",
-    "indicator_names": "Optional[List[string]]",
-    "stock_identifier": "Optional[string]",
-    "is_general_outlook_query": "boolean",
-    "implied_category": "Optional[string]"
-    }}
+**CRITICAL RULES:**
 
-    Rules:
-    1. `is_stock_market_related`: Is the query about stocks, finance, or indicators?
-    2. `is_calculation_requested`: Is a calculation for a stock requested (e.g., "RSI for AAPL", "is GOOGL overbought?")? This requires a `stock_identifier`.
-    3. `indicator_names`: If indicators like "RSI", "MACD" are explicitly named, provide a list of their lowercase, space-removed versions (e.g., ["rsi", "bollingerbands"]). If one is named, provide a list with one item. Otherwise, null or empty.
-    4. `stock_identifier`: If `is_calculation_requested` is true, what is the stock's name/symbol? Otherwise, null.
-    5. `is_general_outlook_query`: Set to true ONLY for broad questions like "Should I buy stock abc?" or "Is company xyz a good buy now?" which imply a need for an aggregated opinion. This requires a `stock_identifier`.
-    6. `implied_category`: ONLY if a single category is implied (e.g., "is it volatile?", "is the trend strong?") but no specific indicator is named. Choose ONE from: 'momentum', 'trend', 'volatility', 'strength'. Otherwise, null.
+1.  **`stock_identifier` is MANDATORY if a calculation is needed.** If the user mentions a company (e.g., "Reliance", "Aegis Logistics"), you MUST extract it.
+2.  **`is_calculation_requested` MUST be `true`** if the user asks any question about a specific stock that requires data (e.g., "is it volatile?", "is it overbought?", "is it a good buy?").
+3.  **`indicator_names`:** Extract ONLY explicitly named indicators (e.g., RSI, MACD). Do NOT invent indicators from words like "overbought" or "volatile".
+4.  **`implied_category`:** Use this for questions about a technical *concept* where no specific indicator is named.
+    - "is it overbought?" -> `implied_category`: 'momentum'
+    - "is it volatile?" -> `implied_category`: 'volatility'
+    - "is it strong?" -> `implied_category`: 'strength'
+5.  **`is_general_outlook_query`:** Set to `true` for broad, open-ended analysis questions.
+    - "is [company] a good buy right now?" -> `is_general_outlook_query`: true
+    - "technical analysis of [company]" -> `is_general_outlook_query`: true
+    - "is [company] strong?" -> `is_general_outlook_query`: true
 
-    User Question: {question}
+**--- EXAMPLES (Study these carefully) ---**
 
-    Examples:
-    - "What is the RSI and MACD for company ABC?": {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": ["rsi", "macd"], "stock_identifier": "company ABC", "is_general_outlook_query": false, "implied_category": null}}
-    - "Is stock XYZ a good buy now?": {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "stock XYZ", "is_general_outlook_query": true, "implied_category": null}}
-    - "Is company XYZ overbought?": {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "company XYZ", "is_general_outlook_query": false, "implied_category": "momentum"}}
-    - "What is an Exponential Moving Average?": {{"is_stock_market_related": true, "is_calculation_requested": false, "indicator_names": ["ema"], "stock_identifier": null, "is_general_outlook_query": false, "implied_category": null}}
-    - "Who invented the light bulb?": {{"is_stock_market_related": false, "is_calculation_requested": false, "indicator_names": null, "stock_identifier": null, "is_general_outlook_query": false, "implied_category": null}}
+- **User Question:** "Is xyz overbought?"
+  - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "Reliance", "is_general_outlook_query": false, "implied_category": "momentum"}}
 
-    Provide ONLY the JSON output.
+- **User Question:** "How volatile is xyz now?"
+  - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "Aegis Logistics", "is_general_outlook_query": false, "implied_category": "volatility"}}
+
+- **User Question:** "Is xyz a good buy right now?"
+  - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "Reliance", "is_general_outlook_query": true, "implied_category": null}}
+
+- **User Question:** "Technical analysis of xyz"
+  - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "ABB India", "is_general_outlook_query": true, "implied_category": null}}
+
+- **User Question:** "Should I buy xyz based on RSI, MACD, and Supertrend?"
+  - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": ["rsi", "macd", "supertrend"], "stock_identifier": "Aegis Logistics", "is_general_outlook_query": false, "implied_category": null}}
+
+- **User Question:** "What is an EMA?"
+  - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": false, "indicator_names": ["ema"], "stock_identifier": null, "is_general_outlook_query": false, "implied_category": null}}
+
+---
+User Question: {question}
+
+Provide ONLY the valid JSON output.
 """
 
+
 ANSWER_COMPOSER_PROMPT_V2 = """
-    You are IRIS, a helpful and concise financial assistant. Your task is to compose the final answer based on the information provided.
+You are IRIS, a financial assistant providing clear, simple technical analysis insights.
+Your tone is helpful and direct. Your audience is non-technical.
 
-    User's Original Question: "{question}"
+**User's Question:** "{question}"
 
-    --- Provided Context ---
-    - Stock Analyzed: {stock_identifier}
-    - Individual Indicator Results: {indicator_results}
-    - Aggregated Result (JSON object or 'Not applicable.'): {aggregation_result}
-    - Error Message: {error_message}
-    ---
+--- Analysis Data ---
+- Stock Analyzed: {stock_identifier}
+- Aggregated Result: {aggregation_result}
+- Individual Indicator Results: {indicator_results}
+- Error Message: {error_message}
+---
 
-    Instructions:
-    1.  **Priority 1: Handle Errors.** If an `Error Message` is present, your entire response MUST be that error message, phrased politely. Example: "I couldn't complete the request because [Error Message]".
+**Instructions (in order of priority):**
 
-    2.  **Priority 2: Use Aggregated Result.** If `Aggregated Result` is a JSON object (i.e., not the string 'Not applicable.'), this is the most important information.
-        - Start with the final verdict. Use the `overall_verdict` and `composite_score` from the JSON. Example: "Based on an aggregation of multiple indicators, the overall signal for {stock_identifier} is 'Buy' with a composite score of 1.25."
-        - Then, briefly summarize the individual signals that led to this conclusion from the `breakdown` section of the JSON.
-        - Conclude with a standard disclaimer about consulting other factors.
+1.  **If an `Error Message` exists:** State the problem gracefully.
+    - Example: "I'm sorry, I couldn't find a unique stock matching '{stock_identifier}'. Could you please provide a more specific name or symbol?"
 
-    3.  **Priority 3: Use Single Indicator Result.** If there is no aggregated result, but there is one `Individual Indicator Result` (that isn't an error).
-        - Summarize that single result. Example: "The RSI for {stock_identifier} is 25.5, which suggests a 'buy' signal. In simple terms, this indicates the stock may be oversold. It is essential to consider other factors before making a decision."
+2.  **If an `Aggregated Result` exists:** This is the main insight.
+    - State the overall verdict and score directly.
+    - Briefly mention which indicators support this view. Keep it to one or two sentences.
+    - Example: "The overall technical outlook for {stock_identifier} is currently a 'Buy', based on strong signals from the MACD and Supertrend indicators."
 
-    4.  **Priority 4: Handle General Questions.** If there are no calculations or errors (e.g., user asked "What is RSI?"), provide a concise, 2-3 sentence explanation of the indicator(s) mentioned in the original question.
+3.  **If there is a single `Individual Indicator Result`:**
+    - Explain the result in simple terms.
+    - Example: "The RSI for {stock_identifier} is 25.5, which suggests the stock may be 'oversold'. This is often considered a potential buying signal by traders."
 
-    Keep your answer clear, concise, and professional.
+4.  **If it's a general question (no calculation):**
+    - Provide a simple, 2-sentence definition of the indicator(s) asked about.
+    - Example: "The Relative Strength Index, or RSI, is a tool traders use to see if a stock might be overbought or oversold."
+
+**CRITICAL RULE:** Do NOT use jargon or complex phrasing. Be concise and direct.
 """
 
 
@@ -135,7 +150,7 @@ async def extract_and_prepare_node(state: TechnicalAgentState) -> Dict:
     print("---NODE: Extract & Prepare---")
     # Using the fixed prompt name from our previous step
     prompt = EXTRACT_QUERY_DETAILS_PROMPT_V2.format(question=state["question"])
-    structured_llm = groq_llm.with_structured_output(ExtractedTechDetailsV2, method="json_mode")
+    structured_llm = groq_llm_fast.with_structured_output(ExtractedTechDetailsV2, method="json_mode")
 
     try:
         details = await structured_llm.ainvoke(prompt)
@@ -188,44 +203,37 @@ async def extract_and_prepare_node(state: TechnicalAgentState) -> Dict:
         return {"error_message": "I had trouble understanding your request. Could you please rephrase?"}
 
 
-async def resolve_fincode_node(state: Dict) -> Dict: # Using Dict for broader compatibility
-    """Safely and accurately resolves a stock identifier to a fincode using parameterized queries."""
+async def resolve_fincode_node(state: Dict) -> Dict:
     print("---NODE: Resolve Fincode---")
-    
-    # R-NOTE: The engine is now created *inside* the function, bound to the correct event loop.
     async_engine = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
-    
     try:
         stock_id = state["extraction_details"].stock_identifier
         
+        # This new query is more robust. It prioritizes exact matches, then handles partial matches.
+        # It handles "Reliance" by finding "Reliance Industries Ltd." as the best match.
         fincode_lookup_query = text("""
             SELECT fincode FROM accord_base_live.company_master 
-            WHERE compname LIKE :like_id OR symbol = :exact_id OR fincode = :num_id OR scripcode = :num_id_str
+            WHERE 
+                compname = :exact_id OR 
+                symbol = :exact_id OR
+                compname LIKE :like_id
             ORDER BY 
                 CASE 
                     WHEN symbol = :exact_id THEN 0
                     WHEN compname = :exact_id THEN 1
-                    WHEN compname LIKE :like_id_exact THEN 2
+                    WHEN compname LIKE :like_id_start THEN 2
                     ELSE 3
                 END, 
                 LENGTH(compname) ASC 
             LIMIT 1;
         """)
 
-        try:
-            num_id = int(stock_id)
-        except (ValueError, TypeError):
-            num_id = -1
-
         params = {
-            "like_id": f"%{stock_id}%",
-            "like_id_exact": f"{stock_id}%",
             "exact_id": stock_id,
-            "num_id": num_id,
-            "num_id_str": str(num_id)
+            "like_id": f"%{stock_id}%",
+            "like_id_start": f"{stock_id}%",
         }
 
-        # The connection is now guaranteed to be on the correct loop
         async with async_engine.connect() as connection:
             result = await connection.execute(fincode_lookup_query, params)
             fincode = result.scalar_one_or_none()
@@ -240,11 +248,9 @@ async def resolve_fincode_node(state: Dict) -> Dict: # Using Dict for broader co
         print(f"Database error during fincode resolution: {e}")
         return {"error_message": f"A database error occurred while looking up the stock."}
     finally:
-        # R-NOTE: CRITICAL - Dispose of the engine to clean up connections before the loop closes.
         if 'async_engine' in locals():
             print("--- Disposing of temporary database engine (fincode) ---")
             await async_engine.dispose()
-
 
 # THIS IS THE NEW, CORRECTED VERSION of fetch_price_data_node
 async def fetch_price_data_node(state: Dict) -> Dict: # Using Dict for broader compatibility
@@ -432,10 +438,10 @@ if __name__ == "__main__":
     async def run_tech_agent_test():
         test_queries = [
           
-        "What is RSI?", 
+        # "What is RSI?", 
         "Is Reliance overbought?", 
         "How volatile is Aegis Logistics now?", 
-        "stochastic for Ambalal Sarabhai", 
+        # "stochastic for Ambalal Sarabhai", 
         "Is Reliance strong?", 
         "Should i buy Ambalal Sarabhai?",
         "Should I buy reliance based on Bollinger Bands",
@@ -443,6 +449,8 @@ if __name__ == "__main__":
         "Should I buy reliance based on MACD?",
         "Should I buy Aegis Logistics based on RSI, MACD, and Supertrend?", # Explicit multi-indicator
         "Is Reliance a good buy right now?", # General outlook, should trigger default aggregation
+        "Should I buy Aegis Logistics based on RSI, MACD, bollingerbands and Supertrend?", # Explicit multi-indicator
+        "Technical analysis of ABB India",
        
         ]
         for query in test_queries:

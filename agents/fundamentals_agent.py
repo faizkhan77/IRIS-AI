@@ -12,7 +12,7 @@ from db_config import ASYNC_DATABASE_URL
 from agents.rag_context_provider import get_intelligent_context
 
 # Custom module imports
-from model_config import groq_llm
+from model_config import groq_llm,groq_llm_fast
 from db_config import async_engine
 
 
@@ -29,6 +29,7 @@ class KnownSchema(BaseModel):
 
 class ExtractionOutput(BaseModel):
     is_database_required: bool = Field(description="Is database access required to answer the question?")
+    is_health_checklist_query: bool = Field(False, description="Set to true ONLY for broad, subjective questions like 'Is [company] strong?', 'Is it a good buy?', or 'fundamental analysis of [company]'.")
     entities: List[IdentifiedEntity] = Field(description="List of all unique financial entities found in the query.")
     tasks: Dict[str, str] = Field(description="A dictionary mapping each entity_name (or 'General Query') to a concise description of the data needed for it.")
     known_schema_lookups: Optional[Dict[str, KnownSchema]] = Field(None, description="If a task can be answered by a single known column from the Golden Schema, map the task to its table and column here.")
@@ -106,33 +107,41 @@ GOLDEN_SCHEMA_CONTEXT = """
 """
 
 
-
+# --- FIX: Incorporate Health Checklist identification into your original prompt ---
 EXTRACT_PROMPT = """
-    You are an expert financial data extraction assistant. Your most important task is to perform a Pre-Flight Check.
+    You are an expert financial data extraction assistant. Your most important task is to perform a Pre-Flight Check and categorize the user's intent.
 
     --- Golden Schema ---
     {golden_schema}
     ---
+    
+    **Intent Categorization Rules (in order of priority):**
 
-    First, analyze the user's question. Can it be answered by a single known column in the Golden Schema?
-    - "List all distinct industries" -> YES, `industry` from `company_master`.
-    - "What are the scrip codes?" -> YES, `scripcode` from `company_master`.
-    - "Market cap of company ABC?" -> NO, this requires a join and filter.
+    1.  **Fundamental Health Check (`is_health_checklist_query`):** First, check if the user is asking a broad, subjective question about a company's overall health, strength, or a general "buy" recommendation.
+        - **Examples:** "Is Reliance strong?", "Should I buy ABB India?", "fundamental analysis of Ambalal Sarabhai"
+        - If YES, you MUST set `is_health_checklist_query` to `true`. This is the highest priority and overrides all other rules.
 
-    Now, process the user's question and produce a single JSON object matching the 'ExtractionOutput' schema.
+    2.  **Simple Lookup (`known_schema_lookups`):** If it is NOT a health check, then check if the question can be answered by a single known column in the Golden Schema.
+        - **Examples:** "List all distinct industries", "What are the scrip codes?"
+        - If YES, you MUST populate the `known_schema_lookups` field.
 
-    Rules:
-    1.  **Pre-Flight Check (MANDATORY):** If the check above is YES, you MUST populate the `known_schema_lookups` field. The key should be "General Query" and the value should be the table and column. If the check is NO, `known_schema_lookups` MUST be null.
-    2.  `is_database_required`: Set to true if financial data is needed.
-    3.  `entities`: A list of all distinct company names or stock symbols.
-    4.  `tasks`: A dictionary mapping each entity's name to a concise task description. For non-entity questions, use the key "General Query".
+    3.  **Specific Metric Query (Default):** If it is neither of the above, it is a query for a specific metric.
+        - **Example:** "Market cap of company ABC?"
+
+    **Final JSON Output Rules:**
+    - `is_database_required`: Set to true if financial data is needed.
+    - `entities`: A list of all distinct company names or stock symbols.
+    - `tasks`: A dictionary mapping each entity's name to a concise task description.
 
     --- EXAMPLES ---
+    User Question: "Is Reliance Industries strong?"
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": true, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Fundamental health analysis for Reliance Industries"}}, "known_schema_lookups": null}}
+
     User Question: "List all distinct industries"
-    Your Output: {{"is_database_required": true, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
 
     User Question: "What is the market cap of Company ABC?"
-    Your Output: {{"is_database_required": true, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
     ---
     User Question: {question}
     Output ONLY the valid JSON object.
@@ -154,59 +163,55 @@ GENERALIZE_TASK_PROMPT = """
     Your Output:
 """
 
-
 WRITE_QUERY_PROMPT = """
-    You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query.
+You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query.
 
-    --- THOUGHT PROCESS (You MUST follow this) ---
-    1.  **Prioritize Golden Schema:** I will first read the Golden Schema. If there is a conflict, the Golden Schema is ALWAYS correct. For "Promoter Shareholding", I MUST use `tp_f_total_promoter`.
+--- THOUGHT PROCESS (You MUST follow this) ---
+1.  **Prioritize Golden Schema:** The Golden Schema is my absolute source of truth. If there is a conflict, the Golden Schema is ALWAYS correct.
+2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for a given table.
+    - For `company_equity` or `company_equity_cons`, the date column is `year_end`. I will NEVER use `date` for this table.
+    - For `company_results` or `company_results_cons`, the date column is `date_end`.
+    - For `bse_abjusted_price_eod`, the date column is `date`.
+3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`) to prevent "ambiguous column" errors.
+4.  **Efficient Joins:** I will only JOIN tables if their columns are explicitly required by the RAG context.
+5.  **Entity Filtering:** For a specific company like '{entity_name}', I MUST add a WHERE clause: `WHERE cm.compname LIKE '%{entity_name}%'`.
+6.  **Ranking Queries:** For a 'General Query' (like "top 5"), I MUST NOT filter by a specific company name. I will `ORDER BY` the relevant metric and use `LIMIT`.
+7.  **"Latest" Data:** For a single entity, I will `ORDER BY [correct_date_column] DESC LIMIT 1`. For rankings, this is more complex and may require a subquery to find the max date per company.
 
-    2.  **Efficient Joins:** I will only `JOIN` with `company_master` if I need the `compname`. If the primary data (like `psh_f_total_promoter`) and the `fincode` for filtering exist in the same table, I will query that table directly to keep the query simple and efficient.
+--- SCHEMA CONTEXT ---
+-- Golden Schema & High-Level Database Guide --
+{golden_schema}
+-- Dynamic RAG Schema (Columns specific to this task) --
+{rag_context}
+--- END SCHEMA CONTEXT ---
 
-    3.  **Entity Identification & Filtering:**
-        - If the `entity_name` is specific (e.g., 'Reliance Industries'), I MUST find its `fincode` using a subquery: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
+--- TASK ---
+Original Question: "{original_question}"
+Current Task: "{current_task}"
+Entity Name (if applicable): "{entity_name}"
 
-    4.  **Handle Ranking Queries:** If the `entity_name` is 'General Query' (like for a "top 5" ranking), I MUST NOT add a `WHERE` clause to filter by company name.
-
-    5.  **Handle "Latest" Data for Rankings:** For ranking queries, I MUST determine the correct date column from the Golden Schema for each table (e.g., `date_end` or `year_end`). I will then join on a subquery that finds the latest value of that column per `fincode`, for example:
-
-    6.  **Handle "Latest" Data for a Single Entity:** For one company, I will use `ORDER BY [date_column] DESC LIMIT 1`.
-
-    7.  **Verify & Formulate:** I will build the query using ONLY columns explicitly found in the Golden Schema or the RAG context. I MUST NOT invent or assume any column name that is not mentioned in those sources.
-
-    --- SCHEMA CONTEXT ---
-    -- Golden Schema & High-Level Database Guide --
-    {golden_schema}
-    -- Dynamic RAG Schema (Columns specific to this task) --
-    {rag_context}
-    --- END SCHEMA CONTEXT ---
-
-    --- TASK ---
-    Original Question: "{original_question}"
-    Current Task: "{current_task}"
-    Entity Name (if applicable): "{entity_name}"
-
-    Now, following my thought process and all rules, I will write the SQL query as a single JSON object.
+Now, following all rules meticulously, I will write the SQL query as a single JSON object.
 """
 
-
 ANSWER_COMPOSER_PROMPT = """
-    You are IRIS, a financial assistant. Synthesize a single, cohesive, and natural language answer based on the user's question and the data provided.
+You are IRIS, a financial assistant. Your goal is to provide a clear, simple, and direct answer in 3-4 lines. Your tone is helpful and professional. Your audience is non-technical.
 
-    --- Data Collected ---
-    Query Results (JSON format): {results_summary}
-    ---
+--- Data Collected ---
+Query Results (JSON format): {results_summary}
+---
 
-    **CRITICAL FORMATTING RULES:**
-    1.  **Direct Answer:** Do NOT write any introductory phrases like "Here is the answer:". Start the response directly.
-    2.  **Indian Numbering System:** All large numerical values MUST be formatted for an Indian audience using 'Lakhs' and 'Crores'. For example, 15,000,000 should be '1.5 Crores' and 500,000 should be '5 Lakhs'. Do not use 'millions' or 'billions'.
-    3.  **Full Company Names:** Always use the full company name (e.g., the `compname` value) from the results, not just the short name from the user's question.
+**CRITICAL RULES:**
+1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
+2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
+3.  **Use Full Names:** Use full company names from the results.
+4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
+5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
+6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
 
-    **CONTENT RULES:**
-    - **Handle Multiple Results:** If the `Query Results` JSON has multiple top-level keys (e.g., one for "Reliance Industries" and one for "ABB India"), you must combine the information for each key into a single, flowing answer.
-    - If the result is a list (like a list of industries), format it as a clean, bulleted list.
-    - If results are available, use them to directly answer the user's question.
-    - If a query result contains an error, explain the problem clearly and politely.
+7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
+    - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
+
+Now, synthesize the final answer based on the data and these rules.
 """
 
 # --- Agent Nodes ---
@@ -214,13 +219,79 @@ ANSWER_COMPOSER_PROMPT = """
 async def extract_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Extract Entities & Tasks (with Pre-Flight Check)---")
     prompt = EXTRACT_PROMPT.format(question=state["question"], golden_schema=GOLDEN_SCHEMA_CONTEXT)
-    structured_llm = groq_llm.with_structured_output(ExtractionOutput, method="json_mode")
+    structured_llm = groq_llm_fast.with_structured_output(ExtractionOutput, method="json_mode")
     try:
         result = await structured_llm.ainvoke(prompt)
         print(f"Extraction Result: {result.model_dump_json(indent=2)}")
         return {"extraction": result}
     except Exception as e:
         return {"error_message": f"Failed to understand the query's structure. Error: {e}"}
+
+
+
+# --- FINAL FIX: Replace the entire execute_health_checklist_node function with this one ---
+async def execute_health_checklist_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Executes a pre-defined, robust SQL query to get a comprehensive view of a
+    company's fundamental health, using correlated subqueries for reliability.
+    This version includes robust state handling and logging.
+    """
+    print("---NODE: Execute Fundamental Health Checklist (Hard-coded Tool)---")
+    
+    entities = state["extraction"].entities
+    if not entities:
+        return {"error_message": "A company name is required for a fundamental health check."}
+
+    health_check_query_template = text("""
+        SELECT
+            (SELECT compname FROM company_master WHERE fincode = :fincode) AS compname,
+            (SELECT close FROM bse_abjusted_price_eod WHERE fincode = :fincode ORDER BY date DESC LIMIT 1) AS latest_close_price,
+            (SELECT mcap FROM company_equity WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS market_cap,
+            (SELECT ttmpe FROM company_equity WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS pe_ratio,
+            (SELECT price_bv FROM company_equity WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS price_to_book_value,
+            (SELECT ev_ebitda FROM company_equity WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS ev_to_ebitda,
+            (SELECT ttmeps FROM company_equity WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS earnings_per_share,
+            (SELECT net_sales FROM company_finance_profitloss WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS net_sales,
+            (SELECT profit_after_tax FROM company_finance_profitloss WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS profit_after_tax,
+            (SELECT operating_profit FROM company_finance_profitloss WHERE fincode = :fincode ORDER BY year_end DESC LIMIT 1) AS operating_profit,
+            (SELECT tp_f_total_promoter FROM company_shareholding_pattern WHERE fincode = :fincode ORDER BY date_end DESC LIMIT 1) AS promoter_shareholding
+    """)
+
+    async_engine_instance = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    query_results = {}
+    
+    try:
+        async with async_engine_instance.connect() as connection:
+            for entity in entities:
+                entity_name = entity.entity_name
+                print(f"Executing comprehensive health check for: {entity_name}")
+                
+                fincode_query = text("SELECT fincode FROM company_master WHERE compname LIKE :company_name_pattern LIMIT 1")
+                fincode_result = await connection.execute(fincode_query, {"company_name_pattern": f"%{entity_name}%"})
+                fincode = fincode_result.scalar_one_or_none()
+
+                if not fincode:
+                    print(f"Could not find fincode for {entity_name}")
+                    result_str = json.dumps([{"error": f"Company '{entity_name}' not found."}])
+                else:
+                    print(f"Found fincode {fincode} for {entity_name}. Executing main query.")
+                    result = await connection.execute(health_check_query_template, {"fincode": fincode})
+                    rows = result.mappings().all()
+                    result_str = json.dumps([dict(row) for row in rows], default=str) if rows else "[]"
+                
+                print(f"Result for '{entity_name}': {result_str[:400]}...")
+                query_results[entity_name] = result_str
+        
+        # This is the crucial part: return the dictionary to update the graph's state.
+        return {"query_results": query_results}
+
+    except Exception as e:
+        error_msg = f"Error executing health check query: {e!r}"
+        print(error_msg)
+        return {"error_message": error_msg}
+    finally:
+        print("--- Disposing of temporary database engine ---")
+        await async_engine_instance.dispose()
 
 async def parallel_generalize_and_rag_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Generalize & RAG---")
@@ -237,7 +308,7 @@ async def parallel_generalize_and_rag_node(state: FundamentalsAgentState) -> Dic
         print(f"Pre-Flight Check failed for task '{specific_task}'. Proceeding with RAG.")
         try:
             gen_prompt = GENERALIZE_TASK_PROMPT.format(specific_task=specific_task)
-            structured_llm = groq_llm.with_structured_output(GeneralizedQuery)
+            structured_llm = groq_llm_fast.with_structured_output(GeneralizedQuery)
             gen_result = await structured_llm.ainvoke(gen_prompt)
             generalized_question = gen_result.generalized_question
             print(f"Task '{specific_task}' ==> Generalized: '{generalized_question}'")
@@ -345,11 +416,24 @@ async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
 
 # --- Graph Definition ---
 def route_after_extraction(state: FundamentalsAgentState) -> str:
+    """
+    Decides the path after the initial query extraction.
+    - If it's a health check, go to the hard-coded tool.
+    - If DB is not needed, go straight to the answer.
+    - Otherwise, go to the RAG path.
+    """
     if state.get("error_message"):
         return "end"
+    
+    if state["extraction"].is_health_checklist_query:
+        print("Routing to: Health Checklist Tool")
+        return "health_check_path"
+
     if state["extraction"].is_database_required:
-        return "db_path"
+        print("Routing to: RAG Path for Specific Metrics")
+        return "rag_path"
     else:
+        print("Routing to: General Path (No DB required)")
         return "general_path"
         
 graph_builder = StateGraph(FundamentalsAgentState)
@@ -357,17 +441,24 @@ graph_builder.add_node("extract", extract_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
 graph_builder.add_node("execute_queries", parallel_execute_queries_node)
+graph_builder.add_node("execute_health_checklist", execute_health_checklist_node)
 graph_builder.add_node("compose_answer", compose_final_answer_node)
 
 graph_builder.set_entry_point("extract")
-graph_builder.add_conditional_edges("extract", route_after_extraction, {
-    "db_path": "generalize_and_rag", 
-    "general_path": "compose_answer", 
-    "end": END
-})
+graph_builder.add_conditional_edges(
+    "extract",
+    route_after_extraction,
+    {
+        "health_check_path": "execute_health_checklist",
+        "rag_path": "generalize_and_rag", 
+        "general_path": "compose_answer", 
+        "end": END
+    }
+)
 graph_builder.add_edge("generalize_and_rag", "write_queries")
 graph_builder.add_edge("write_queries", "execute_queries")
 graph_builder.add_edge("execute_queries", "compose_answer")
+graph_builder.add_edge("execute_health_checklist", "compose_answer")
 graph_builder.add_edge("compose_answer", END)
 app = graph_builder.compile()
 
@@ -385,6 +476,10 @@ if __name__ == "__main__":
             "Scripcode and fincode of ABB India",
             "What is the latest promoter shareholding percentage for Reliance Industries?",
             "List all distinct industries",
+
+            "Is Reliance Industries strong?",
+            "Should i buy Ambalal Sarabhai?",
+            "Is Reliance Industries a good buy right now?"
 
         ]
         for q_text in test_queries:

@@ -9,9 +9,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
 # --- Database Configuration ---
-DB_USER = os.getenv("DB_LTM_USER", "root")
-DB_PASSWORD = os.getenv("DB_LTM_PASSWORD", "root")
-DB_HOST = os.getenv("DB_LTM_HOST", "localhost")
+DB_USER = os.getenv("DB_LTM_USER", "devuser")
+DB_PASSWORD = os.getenv("DB_LTM_PASSWORD", "iris_agent")
+DB_HOST = os.getenv("DB_LTM_HOST", "45.114.142.157")
 DB_PORT = os.getenv("DB_LTM_PORT", "3306")
 DB_NAME = os.getenv("DB_LTM_NAME", "iris_long_term_memory")
 

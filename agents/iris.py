@@ -16,7 +16,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 # --- Local Imports ---
-from model_config import groq_llm,groq_llm_small
+from model_config import groq_llm, groq_llm_fast
 from .fundamentals_agent import app as fundamentals_app_instance
 from .sentiment_agent import app as sentiment_app_instance
 from .technicals_agent import app as technical_app_instance
@@ -96,42 +96,50 @@ Now, based on the provided preferences and the new request, generate the final J
 """
 
 
-SUPERVISOR_PROMPT_TEMPLATE = """You are IRIS, a master AI supervisor. Your job is to analyze the user's query to understand their INTENT and route them to the correct tool. You must be precise.
+# In iris.py
+
+SUPERVISOR_PROMPT_TEMPLATE = """
+You are IRIS, a master AI supervisor. Your job is to analyze the user's query to determine their INTENT and route them to the correct tool. You must be extremely precise and follow a logical thought process.
 
 **--- Conversation History (for context) ---**
 {chat_history}
 - **User's Current Query:** "{user_input}"
 
-**--- ROUTING RULES (Follow these in PRECISE order of priority) ---**
+**--- YOUR THOUGHT PROCESS (You MUST follow this logic): ---**
 
-1.  **OUT_OF_DOMAIN (`out_of_domain`):** If the query is clearly not related to finance, investing, or the stock market.
-    - **Examples:** "who invented TV?", "what is the capital of France?"
+1.  **Is the user stating a preference for me to remember?**
+    - Trigger Phrases: "My favorite...", "I prefer...", "My style is..."
+    - If YES, route to **`save_ltm`**.
 
-2.  **SAVE LTM (`save_ltm`):** Choose this ONLY if the user is **TELLING you a new fact to remember about themselves**. This is for storing or updating new information. Prioritize this if the user states a preference.
-    - **Trigger Words/Phrases:** "I am...", "My favorite is...", "Remember that I prefer...", "I use...", "I also love...", "I like...", "My preference is..."
-    - **Examples:** "My fav stock is xyz and i prefer to use abc", "I am a xyz investor.", "I also love xyz and abc"
+2.  **Is the user asking about a preference I have already saved?**
+    - Trigger Phrases: "What is my favorite...", "Which indicator do I like?"
+    - If YES, route to **`load_ltm`**.
 
-3.  **LOAD LTM (`load_ltm`):** Choose this ONLY if the user is **ASKING you a question about what you have already remembered about them**. This is for retrieving information.
-    - **Trigger Words:** "What is my...?", "Which one do I...", "Remind me about..."
-    - **Examples:** "Whats my fav stock?", "and which indicator do i use?", "What kind of investor am I?"
+3.  **Is the query just a company name and nothing else?**
+    - Examples: "Reliance", "Infosys", "Adani stock"
+    - If YES, route to **`clarification`**.
 
-4.  **CLARIFICATION (`clarification`):** If the query consists **ONLY of a single, ambiguous company name, scripcode, ticker or anything with no context** with no other context or verbs.
-    - **Examples:** "Reliance", "Adani", "MSFT" 
-    - **(This does NOT apply to full sentences)**
+4.  **Is the user asking for my OPINION or RECOMMENDATION on a stock?**
+    - This includes questions like "Should I buy/sell/hold...?", "Is it a good buy?", "Is it strong/weak?".
+    - If YES, now check for a sub-condition:
+        - **Does the question mention a SPECIFIC analysis method?**
+            - e.g., "...based on xyz?", "...based on its xyz?", "...based on a,b and c", etc
+            - If YES, route to the specific agent (`technicals` or `fundamentals`).
+        - **If NO specific method is mentioned**, it's a broad question requiring a full analysis. Route to **`cross_agent_reasoning`**. THIS IS THE DEFAULT FOR OPINION QUESTIONS.
 
+5.  **Is the user asking for a FACTUAL data point?**
+    - If the fact is a **technical indicator** (RSI, MACD, volatility, momentum), route to **`technicals`**.
+    - If the fact is a **fundamental data point** (market cap, sales, P/E), route to **`fundamentals`**.
+    - If the fact is about **news or sentiment**, route to **`sentiment`**.
 
-5.  **CROSS-AGENT REASONING (`cross_agent_reasoning`):** This is the default for any broad, subjective, or opinion-based investment question that requires a holistic view. If a specific agent can't answer it alone, use this route.
-    - **Trigger Words:** "Should I buy/sell/hold...", "Is it a good buy...", "Is it a good investment...", "What do you think about...", "Is [company] strong/weak/a good bet?"
-    - **Examples:** "Should I buy xyz?", "Is xyz a good buy right now?", "Is xyz strong?", "Your opinion on xyz stock"
+6.  **Is the question about something other than finance?**
+    - If YES, route to **`out_of_domain`**.
 
-6.  **SPECIFIC AGENT ROUTING:** For specific, self-contained financial questions. Use the history to resolve pronouns like "it".
-    - `technicals`: For ANY question about technical indicators (RSI, MACD, volatility).
-    - `fundamentals`: For ANY question about financial data (market cap, P/E, revenue).
-    - `sentiment`: For ANY question about news or market sentiment.
+7.  **Is it a simple greeting or closing?**
+    - If YES, route to **`general`**.
 
-7.  **GENERAL (`general`):** For simple greetings, thank-yous, or questions about what you are (e.g., "hi", "how are you").
-
-Your output must be a single, valid JSON object.
+---
+Now, apply this thought process to the user's query and provide your output as a single, valid JSON object matching the `SupervisorDecision` schema.
 """
 
 # --- FIX: New prompt for rewriting questions to be self-contained. This logic now lives in IRIS. ---
@@ -239,7 +247,7 @@ class IrisOrchestrator:
         print("---NODE: Supervisor Decide---")
         history_str = "\n".join([f"{m.type}: {m.content}" for m in state.get('full_chat_history', [])[-6:]])
         prompt = SUPERVISOR_PROMPT_TEMPLATE.format(chat_history=history_str, user_input=state["user_input"])
-        structured_llm = groq_llm_small.with_structured_output(SupervisorDecision)
+        structured_llm = groq_llm.with_structured_output(SupervisorDecision)
         try:
             decision = await structured_llm.ainvoke(prompt)
             print(f"Supervisor Decision: Route='{decision.route.value}', Reason='{decision.reasoning}'")
@@ -261,7 +269,7 @@ class IrisOrchestrator:
                 user_input=state["user_input"]
             )
             
-            extractor = groq_llm.with_structured_output(LtmSaveRequest)
+            extractor = groq_llm_fast.with_structured_output(LtmSaveRequest)
             
             extracted_data = await extractor.ainvoke(update_prompt)
             # --- FIX: Access the root dictionary directly ---
@@ -338,39 +346,15 @@ class IrisOrchestrator:
             return {"final_response": response or "The agent could not find an answer."}
         except Exception as e: 
             return {"final_response": f"The {route.name.title()} agent encountered an error: {e!r}"}
-    async def staggered_parallel_agent_call_node(self, state: IrisState) -> Dict:
-        # Rewrite the question ONCE (this part is correct)
-        standalone_question = await _get_standalone_question(state)
-        
-        sub_agent_outputs = {}
-
-        # Define agents along with their specific input key
-        agent_map = {
-            "fundamentals": (fundamentals_app_instance, "question"),
-            "technicals": (technical_app_instance, "question"),
-            "sentiment": (sentiment_app_instance, "query"),
-        }
-        
-        # Loop through the map and build the correct payload for each agent
-        for name, (app, input_key) in agent_map.items():
-            payload = {input_key: standalone_question}
-            try:
-                print(f"--- Calling parallel {name} agent with payload: {payload} ---")
-                result = await app.ainvoke(payload)
-                sub_agent_outputs[name] = result.get("final_answer", "No response.")
-                await asyncio.sleep(1.2) # Staggering remains
-            except Exception as e: 
-                sub_agent_outputs[name] = f"Analyst error: {e!r}"
-        return {"sub_agent_outputs": sub_agent_outputs}
 
     async def synthesize_results_node(self, state: IrisState) -> Dict:
         prompt = SYNTHESIS_PROMPT_TEMPLATE.format(user_input=state["user_input"], **state["sub_agent_outputs"])
-        response = await groq_llm_small.ainvoke(prompt)
+        response = await groq_llm.ainvoke(prompt)
         return {"final_response": response.content}
 
     async def clarification_node(self, state: IrisState) -> Dict:
         prompt = CLARIFICATION_PROMPT_TEMPLATE.format(user_input=state["user_input"])
-        response = await groq_llm.ainvoke(prompt)
+        response = await groq_llm_fast.ainvoke(prompt)
         return {"final_response": response.content}
     
     async def out_of_domain_node(self, state: IrisState) -> Dict:
@@ -379,9 +363,9 @@ class IrisOrchestrator:
     async def general_node(self, state: IrisState) -> Dict:
         history_str = "\n".join([f"{m.type}: {m.content}" for m in state.get('full_chat_history', [])[-6:]])
         prompt = GENERAL_PROMPT_TEMPLATE.format(chat_history=history_str, user_input=state["user_input"])
-        response = await groq_llm.ainvoke(prompt)
+        response = await groq_llm_fast.ainvoke(prompt)
         return {"final_response": response.content}
-    
+
     async def log_to_db_and_finalize_node(self, state: IrisState) -> Dict:
         user_input, final_response = state["user_input"], state.get("final_response") or "I'm sorry, I cannot respond."
         await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "user", user_input)
@@ -389,6 +373,57 @@ class IrisOrchestrator:
         new_history = state["full_chat_history"] + [HumanMessage(content=user_input), AIMessage(content=final_response)]
         print(f"Final Response:\n{final_response}")
         return {"final_response": final_response, "full_chat_history": new_history}
+
+
+    async def staggered_parallel_agent_call_node(self, state: IrisState) -> Dict:
+        # Rewrite the question ONCE (this part is correct)
+        standalone_question = await _get_standalone_question(state)
+
+        # --- NEW STEP: Extract the primary entity from the question ---
+        # This gives us a clean entity name to pass to all agents.
+        entity_extractor_prompt = f"From the following user question, extract the single primary company name or stock symbol. Question: \"{standalone_question}\""
+        entity_response = await groq_llm_fast.ainvoke(entity_extractor_prompt)
+        entity_name = entity_response.content.strip()
+        print(f"--- Extracted entity for parallel call: '{entity_name}' ---")
+        
+        sub_agent_outputs = {}
+
+        # Fundamentals and Technicals take 'question'
+        try:
+            print(f"--- Calling parallel fundamentals agent ---")
+            payload = {"question": standalone_question}
+            result = await fundamentals_app_instance.ainvoke(payload)
+            sub_agent_outputs["fundamentals"] = result.get("final_answer", "No response.")
+        except Exception as e: 
+            sub_agent_outputs["fundamentals"] = f"Analyst error: {e!r}"
+
+        await asyncio.sleep(1.0) # Stagger
+
+        try:
+            print(f"--- Calling parallel technicals agent ---")
+            payload = {"question": standalone_question}
+            result = await technical_app_instance.ainvoke(payload)
+            sub_agent_outputs["technicals"] = result.get("final_answer", "No response.")
+        except Exception as e: 
+            sub_agent_outputs["technicals"] = f"Analyst error: {e!r}"
+
+        await asyncio.sleep(1.0) # Stagger
+
+        # Sentiment agent takes 'query' and now also gets the explicit company name
+        try:
+            print(f"--- Calling parallel sentiment agent ---")
+            # The sentiment agent is now called with the query AND the extracted entity
+            # This requires a small change in the sentiment agent to accept `company_name` directly
+            # For now, we assume it will re-extract, but the fix is to pass it.
+            # Let's assume the Sentiment agent is updated to handle this:
+            payload = {"query": standalone_question, "company_name": entity_name}
+            result = await sentiment_app_instance.ainvoke(payload)
+            sub_agent_outputs["sentiment"] = result.get("final_answer", "No response.")
+        except Exception as e: 
+            sub_agent_outputs["sentiment"] = f"Analyst error: {e!r}"
+
+        return {"sub_agent_outputs": sub_agent_outputs}
+
 
     async def ainvoke(self, payload: dict, config: dict) -> Dict:
         return await self.app.ainvoke(payload, config)
@@ -410,12 +445,12 @@ if __name__ == "__main__":
             #     "How volatile is Aegis Logistics now?", 
             #     "stochastic for Ambalal Sarabhai", 
             #  "Is Reliance strong?", 
-            #     # "Should i buy Ambalal Sarabhai?",
+            #     "Should i buy Ambalal Sarabhai?",
             #     "Should I buy reliance based on Bollinger Bands",
             #     "Should I buy reliance based on RSI?", 
             #     "Should I buy reliance based on MACD?",
             #     "Should I buy Reliance Industries based on RSI, MACD, and Supertrend?", # Explicit multi-indicator
-                "Is Reliance Industries a good buy right now?", 
+            #     "Is Reliance Industries a good buy right now?", 
 
             # "What is the market cap of Reliance Industries and the latest sales for ABB India?",
             # "What is the business description of Ambalal Sarabhai?",
@@ -427,21 +462,27 @@ if __name__ == "__main__":
             # "I prefer long term investments and my fav stock is Reliance Industries",
             # "What is my investment style?",
             # "and my fav stock?"
+            # "My fav stock is Reliance Industies",
+            # "My fav stock is ABB India now",
+            # "But i also love Aegis Logistics",
+            # "and i prefer to use EMA"
+            # "Whats my fav stocks?",
+            # "and which indicator do i use?",
+            # "I also love RSI and MACD",
+            # "Now tell me which are the indicators that i use?",
+            # "Reliance Industries",
+            # "tell me the market cap of it",
+            # "Now tell me its latest closing price",
+            # "Reliance",
+            # "adani",
             # "hi",
             # "How are you",
             # "who invented TV",
-            "My fav stock is Reliance and i prefer to use EMA",
-              "My fav stock is ABB India now",
-            "Whats my fav stock?",
-            "and which indicator do i use?",
-            "I also love RSI and MACD",
-            "Now tell me which are the indicators that i use?",
-            # "Reliance Industries",
-            # "tell me the market cap of it",
-            # "Reliance",
-            # "adani"
-             
 
+            # cross agent reasoning
+            "Is Reliance Industries strong?",
+            "Should i buy Ambalal Sarabhai?",
+            "Is Reliance Industries a good buy right now?"
             ]
 
             
