@@ -36,10 +36,7 @@ def build_store():
         
         # 3. Initialize Embeddings Model
         print("Loading sentence-transformers embedding model (this may take a moment)...")
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"}
-        )
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
         # 4. Create the Vector Store
         print(f"Building vector store from {len(docs_for_embedding)} documents...")
