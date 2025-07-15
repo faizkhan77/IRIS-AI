@@ -12,9 +12,10 @@ try:
     db_pool = pooling.MySQLConnectionPool(
         pool_name="iris_pool",
         pool_size=5,
-        host=os.getenv("DB_HOST", "localhost"),
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "root"),
+        host=os.getenv("DB_HOST", "45.114.142.157"),
+        port=int(os.getenv("DB_PORT", 3306)),
+        user=os.getenv("DB_USER", "devuser"),
+        password=os.getenv("DB_PASSWORD", "iris_agent"),
         database="iris_long_term_memory"
     )
     print("MySQL Connection Pool for LTM created successfully.")
