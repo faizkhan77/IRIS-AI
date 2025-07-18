@@ -182,3 +182,26 @@ def get_user_preferences(user_id: int) -> dict:
     finally:
         cursor.close()
         cnx.close()
+
+def get_messages_by_thread_id(thread_id: str) -> list:
+    """
+    Retrieves all messages for a specific session using the langgraph_thread_id.
+    This is the function our FastAPI endpoint will use.
+    """
+    cnx = get_db_connection()
+    cursor = cnx.cursor(dictionary=True)
+    try:
+        # This query efficiently joins the sessions and chat_logs tables
+        # to find messages based on the thread_id.
+        query = """
+            SELECT cl.role, cl.content, cl.ts as timestamp
+            FROM chat_logs cl
+            JOIN sessions s ON cl.session_id = s.id
+            WHERE s.langgraph_thread_id = %s
+            ORDER BY cl.ts ASC
+        """
+        cursor.execute(query, (thread_id,))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        cnx.close()

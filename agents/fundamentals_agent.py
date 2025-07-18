@@ -57,52 +57,45 @@ class FundamentalsAgentState(TypedDict):
 # This "Golden Schema" is a permanent guide for the LLM, reducing hallucination.
 GOLDEN_SCHEMA_CONTEXT = """
 /*
--- Golden Schema & High-Level Database Guide --
+-- Golden Schema & High-Level Database Guide (v2) --
 
-1.  **Core Company Information:**
+1.  **Core Company Information Table:**
     -   Table: `company_master`
-    -   Columns:
-        -   `fincode`: Unique company code (primary key)
-        -   `compname`: Full company name
-        -   `scripcode`: BSE code
-        -   `industry`: Industry classification
+    -   Key Columns: `fincode` (Primary Key), `compname`, `scripcode`, `industry`.
 
-2.  **Finding "Latest" Data or Date column names:**
-    -   Use `date_end` in:
-        - `company_results`
-        - `company_results_cons`
-        - `company_shareholders_details`
-        - `company_shareholding_pattern`
-    -   Use `year_end` in:
-        - `company_equity`
-        - `company_equity_cons`
-        - `company_finance_ratio`
-        - `company_finance_profitloss`
-        - `company_finance_profitloss_cons`
-    - Use `date` in:
-        - `bse_abjusted_price_eod`
+2.  **Date Column Rules (MANDATORY):**
+    -   Use `year_end` for annual financial data in: `company_equity`, `company_finance_profitloss`, `company_finance_ratio`.
+    -   Use `date_end` for quarterly/periodic data in: `company_results`, `company_shareholding_pattern`.
+    -   Use `date` for daily price data in: `bse_abjusted_price_eod`.
 
-3.  **Key Data Points:**
-    -   Market Cap: `mcap` in `company_equity`
-    -   Sales/Revenue: `net_sales` or `total_income` in `company_results`
-    -   Promoter Shareholding: `tp_f_total_promoter` in `company_shareholding_pattern`
+3.  **Key Data Points Mapping (CRITICAL - Use this to find the correct table for a metric):**
 
-4.  **Pricing Values Tables:**
-    -   For retrieving price-related values (like open, high, low, close, volume, or value traded), the following tables use similar column names:
-        - `bse_indices_price_eod`
-        - `monthly_price_bse`
-        - `monthly_price_nse`
-        - `bse_abjusted_price_eod`
+    **Valuation & Size:**
+    - Market Cap (`mcap`): in `company_equity`
+    - Enterprise Value (`ev`): in `company_equity`
+    - P/E Ratio (`ttmpe`): in `company_equity`
+    - Price to Book Value (`price_bv`): in `company_equity`
+    - Price to Sales (`price_sales`): in `company_equity`
+    - EV to EBITDA (`ev_ebitda`): in `company_equity`
+    - Dividend Yield (`dividend_yield`): in `company_equity`
 
-5.  **bse_abjusted_price_eod Table Schema (Adjusted BSE Daily Prices):**
-    -   `fincode` (int): Unique company code
-    -   `scripcode` (int, optional): BSE scrip code
-    -   `open` (float, optional): Adjusted open price
-    -   `high` (float, optional): Adjusted high price
-    -   `low` (float, optional): Adjusted low price
-    -   `close` (float, optional): Adjusted close price
-    -   `volume` (float, optional): Number of shares traded
-    -   `value` (float, optional): Total value traded
+    **Profitability & Performance:**
+    - Net Sales / Revenue (`net_sales`): in `company_finance_profitloss`
+    - Total Income (`total_income`): in `company_finance_profitloss`
+    - Operating Profit (`operating_profit`): in `company_finance_profitloss`
+    - Net Profit / Profit After Tax (`profit_after_tax`): in `company_finance_profitloss`
+    - Earnings Per Share / EPS (`ttmeps`): in `company_equity`
+
+    **Ownership:**
+    - Promoter Shareholding (`tp_f_total_promoter`): in `company_shareholding_pattern`
+
+    **Book Value & Other:**
+    - Book Value per Share (`booknavpershare`): in `company_equity`
+    - Face Value (`fv`): in `company_equity`
+
+4.  **Daily Pricing Data:**
+    - For `open`, `high`, `low`, `close`, `volume`, you MUST use the `bse_abjusted_price_eod` table.
+
 */
 """
 
@@ -163,34 +156,52 @@ GENERALIZE_TASK_PROMPT = """
     Your Output:
 """
 
-WRITE_QUERY_PROMPT = """
-You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query.
 
---- THOUGHT PROCESS (You MUST follow this) ---
-1.  **Prioritize Golden Schema:** The Golden Schema is my absolute source of truth. If there is a conflict, the Golden Schema is ALWAYS correct.
-2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for a given table.
+
+# --- FINAL FIX: Incorporating the strict Golden Schema rule into your existing prompt ---
+WRITE_QUERY_PROMPT = """
+You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query. You must follow a strict thought process.
+
+--- SCHEMA CONTEXT ---
+-- **PRIMARY SOURCE OF TRUTH: Golden Schema** --
+-- This schema is ALWAYS correct. I will use it to determine which table contains a specific metric and what the correct date column is for that table.
+{golden_schema}
+
+-- **SECONDARY SOURCE: Dynamic RAG Schema** --
+-- This provides additional context. I will use it for column names, but if it conflicts with the Golden Schema, I will IGNORE the RAG context and trust the Golden Schema.
+{rag_context}
+--- END SCHEMA CONTEXT ---
+
+
+--- THOUGHT PROCESS (You MUST follow this sequence): ---
+
+1.  **Analyze the Task & Consult Golden Schema FIRST:**
+    - The user wants: "{current_task}".
+    - I will immediately look at the `Golden Schema` to identify the correct table and date column for the requested metrics.
+    - **Example:** If the task is "latest closing price", I see in the Golden Schema that `close` is in `bse_abjusted_price_eod` and its date column is `date`. I will use ONLY this table and this date column, ignoring any conflicting suggestions from the RAG context.
+    - The Golden Schema is my ultimate authority.
+
+2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for any given table.
     - For `company_equity` or `company_equity_cons`, the date column is `year_end`. I will NEVER use `date` for this table.
     - For `company_results` or `company_results_cons`, the date column is `date_end`.
     - For `bse_abjusted_price_eod`, the date column is `date`.
-3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`) to prevent "ambiguous column" errors.
-4.  **Efficient Joins:** I will only JOIN tables if their columns are explicitly required by the RAG context.
-5.  **Entity Filtering:** For a specific company like '{entity_name}', I MUST add a WHERE clause: `WHERE cm.compname LIKE '%{entity_name}%'`.
-6.  **Ranking Queries:** For a 'General Query' (like "top 5"), I MUST NOT filter by a specific company name. I will `ORDER BY` the relevant metric and use `LIMIT`.
-7.  **"Latest" Data:** For a single entity, I will `ORDER BY [correct_date_column] DESC LIMIT 1`. For rankings, this is more complex and may require a subquery to find the max date per company.
 
---- SCHEMA CONTEXT ---
--- Golden Schema & High-Level Database Guide --
-{golden_schema}
--- Dynamic RAG Schema (Columns specific to this task) --
-{rag_context}
---- END SCHEMA CONTEXT ---
+3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`) to prevent "ambiguous column" errors.
+
+4.  **Efficient Joins:** I will only JOIN tables if their columns are explicitly required by the RAG context OR if they are needed to fulfill the Golden Schema's instructions for a metric.
+
+5.  **Entity Filtering:** For a specific company like '{entity_name}', I MUST add a WHERE clause to filter by `fincode` using a subquery on `company_master`: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
+
+6.  **Ranking Queries:** For a 'General Query' (like "top 5"), I MUST NOT filter by a specific company name. I will `ORDER BY` the relevant metric and use `LIMIT`.
+
+7.  **"Latest" Data:** For a single entity, I will `ORDER BY [correct_date_column] DESC LIMIT 1`. For rankings, this is more complex and may require a subquery to find the max date per company.
 
 --- TASK ---
 Original Question: "{original_question}"
 Current Task: "{current_task}"
 Entity Name (if applicable): "{entity_name}"
 
-Now, following all rules meticulously, I will write the SQL query as a single JSON object.
+Now, following my rigorous thought process and trusting the Golden Schema above all else, I will write the SQL query as a single JSON object.
 """
 
 ANSWER_COMPOSER_PROMPT = """
@@ -468,7 +479,7 @@ app = graph_builder.compile()
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
-            "Is Reliance strong?",
+            "Is Reliance strong based on Fundamental Analysis?",
             "What is the market cap of Reliance Industries and the latest sales for ABB India?",
             "What is the business description of Ambalal Sarabhai?",
             "What are the top 5 companies by market cap?",
@@ -477,9 +488,7 @@ if __name__ == "__main__":
             "What is the latest promoter shareholding percentage for Reliance Industries?",
             "List all distinct industries",
 
-            "Is Reliance Industries strong?",
-            "Should i buy Ambalal Sarabhai?",
-            "Is Reliance Industries a good buy right now?"
+       
 
         ]
         for q_text in test_queries:

@@ -13,7 +13,7 @@ import os
 # A powerful model for complex reasoning, SQL generation, and synthesis
 groq_llm = ChatGroq(
     temperature=0.2, 
-    model_name="llama3-70b-8192", 
+    model_name="meta-llama/llama-4-maverick-17b-128e-instruct", 
     groq_api_key=os.getenv("GROQ_API_KEY")
 )
 

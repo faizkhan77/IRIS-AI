@@ -9,7 +9,7 @@ from typing import TypedDict, Annotated, List as TypingList, Dict, Any, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, RootModel 
-
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate 
 # --- LangChain/LangGraph Imports ---
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
@@ -20,7 +20,7 @@ from model_config import groq_llm, groq_llm_fast
 from .fundamentals_agent import app as fundamentals_app_instance
 from .sentiment_agent import app as sentiment_app_instance
 from .technicals_agent import app as technical_app_instance
-import db_ltm
+from . import db_ltm
 
 load_dotenv()
 
@@ -97,64 +97,78 @@ Now, based on the provided preferences and the new request, generate the final J
 
 
 # In iris.py
-
 SUPERVISOR_PROMPT_TEMPLATE = """
-You are IRIS, a master AI supervisor. Your job is to analyze the user's query to determine their INTENT and route them to the correct tool. You must be extremely precise and follow a logical thought process.
+You are IRIS, a master AI supervisor. Your job is to analyze the user's raw query and conversation history to determine their true INTENT and route them to the correct tool. You must be extremely precise.
 
 **--- Conversation History (for context) ---**
 {chat_history}
-- **User's Current Query:** "{user_input}"
+- **User's Current Raw Query:** "{user_input}"
 
 **--- YOUR THOUGHT PROCESS (You MUST follow this logic): ---**
 
-1.  **Is the user stating a preference for me to remember?**
-    - Trigger Phrases: "My favorite...", "I prefer...", "My style is..."
-    - If YES, route to **`save_ltm`**.
+1.  **Long-Term Memory (LTM) Check - HIGHEST PRIORITY:**
+    - Is the user **TELLING ME** a preference to remember? (e.g., "My favorite stock is...", "I prefer...", "My investment style is..."). If YES, route to **`save_ltm`**.
+    - Is the user **ASKING ME** about a preference I should already know? (e.g., "What is my favorite stock?", "Which indicators do I like?"). If YES, route to **`load_ltm`**.
 
-2.  **Is the user asking about a preference I have already saved?**
-    - Trigger Phrases: "What is my favorite...", "Which indicator do I like?"
-    - If YES, route to **`load_ltm`**.
+2.  **Contextual Follow-up Check:**
+    - Does the query refer to a previous turn (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
+    - If YES, identify the topic from the history (e.g., "Financial Performance of Reliance") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`). This is a critical task.
 
-3.  **Is the query just a company name and nothing else?**
-    - Examples: "Reliance", "Infosys", "Adani stock"
-    - If YES, route to **`clarification`**.
+3.  **Vague Query Check:**
+    - Is the query just a company name (e.g., "Reliance", "Infosys")? If YES, route to **`clarification`**.
 
-4.  **Is the user asking for my OPINION or RECOMMENDATION on a stock?**
-    - This includes questions like "Should I buy/sell/hold...?", "Is it a good buy?", "Is it strong/weak?".
-    - If YES, now check for a sub-condition:
-        - **Does the question mention a SPECIFIC analysis method?**
-            - e.g., "...based on xyz?", "...based on its xyz?", "...based on a,b and c", etc
-            - If YES, route to the specific agent (`technicals` or `fundamentals`).
-        - **If NO specific method is mentioned**, it's a broad question requiring a full analysis. Route to **`cross_agent_reasoning`**. THIS IS THE DEFAULT FOR OPINION QUESTIONS.
+4.  **Broad Opinion Check:**
+    - Is the user asking for a broad opinion (e.g., "Should I buy/sell/hold...?", "Is it a good buy?") without specifying a method? If YES, route to **`cross_agent_reasoning`**.
 
-5.  **Is the user asking for a FACTUAL data point?**
-    - If the fact is a **technical indicator** (RSI, MACD, volatility, momentum), route to **`technicals`**.
-    - If the fact is a **fundamental data point** (market cap, sales, P/E), route to **`fundamentals`**.
-    - If the fact is about **news or sentiment**, route to **`sentiment`**.
+5.  **Specific Fact Check:**
+    - Is the user asking for a specific technical fact (RSI, MACD)? Route to **`technicals`**.
+    - Is the user asking for a specific fundamental fact (P/E, market cap)? Route to **`fundamentals`**.
+    - Is the user asking about news or public mood? Route to **`sentiment`**.
 
-6.  **Is the question about something other than finance?**
-    - If YES, route to **`out_of_domain`**.
-
-7.  **Is it a simple greeting or closing?**
-    - If YES, route to **`general`**.
+6.  **Catch-Alls:**
+    - Is it a simple greeting or closing? Route to **`general`**.
+    - Is it about something other than finance? Route to **`out_of_domain`**.
 
 ---
-Now, apply this thought process to the user's query and provide your output as a single, valid JSON object matching the `SupervisorDecision` schema.
+Now, apply this thought process to the user's raw query and provide your output as a single, valid JSON object.
 """
 
 # --- FIX: New prompt for rewriting questions to be self-contained. This logic now lives in IRIS. ---
-REWRITE_QUESTION_PROMPT = """You are an expert at rephrasing questions to be self-contained.
-Given a chat history and a follow-up question, your task is to rewrite the follow-up question to be a standalone question that can be understood without the context of the chat history.
-Resolve any pronouns (like "it", "they", "its", "that") by replacing them with the specific entities they refer to from the history.
-If the question is already self-contained, simply return it as is.
+# In iris.py, replace the REWRITE_QUESTION_PROMPT
+
+REWRITE_QUESTION_PROMPT = """You are an expert at creating self-contained, standalone queries for another AI.
+Your task is to analyze the user's latest input and the recent conversation history, then rewrite the user's input into a complete query that can be understood without any of the previous context.
+
+**Strict Rules:**
+1.  **Resolve all context:** Replace pronouns (e.g., "it", "that") and references (e.g., "the first option", "tell me more") with the specific entities and topics they refer to from the chat history.
+2.  **Preserve Intent:** If the original input is a question, the output must be a question. If it's a statement/command, the output must be a statement/command.
+3.  **Be Concise:** Your entire output must be ONLY the final, rewritten query. Do not add any extra text or explanations.
+4.  **No-Op:** If the user's input is already a complete, standalone query (e.g., "What is the PE ratio of Reliance Industries?"), return it exactly as is.
+
+**--- Example ---**
+**Chat History:**
+assistant: To provide a comprehensive analysis of Reliance Industries, we need more specific information...
+- **Financial Performance:** Stock price, revenue, and profit margins.
+- **Business Operations:** Energy, retail, and petrochemicals sectors.
+**User Input:**
+I wanna know the First option
+
+**Rewritten, Self-Contained User Input:**
+What is the financial performance of Reliance Industries?
+**--- End Example ---**
+
+Now, perform this task on the following inputs.
 
 **Chat History:**
 {chat_history}
 
-**Follow-up Question:**
+**User Input:**
 {question}
 
-**Standalone Question:**"""
+**Rewritten, Self-Contained User Input:**
+"""
+
+
 
 SYNTHESIS_PROMPT_TEMPLATE = """You are IRIS, a sharp and confident financial analyst AI. Your task is to synthesize reports into a single, direct, and easy-to-understand response.
 **User's Query:** "{user_input}"
@@ -188,6 +202,9 @@ GENERAL_PROMPT_TEMPLATE = """You are IRIS, a friendly and professional financial
 Your response:
 """
 
+
+# FINAL_FORMATTING_PROMPT_TEMPLATE = 
+
 # --- Helper Function for Rewriting Question ---
 async def _get_standalone_question(state: IrisState) -> str:
     """Uses chat history to rewrite a question to be self-contained."""
@@ -210,8 +227,11 @@ class IrisOrchestrator:
 
     def _build_graph(self) -> StateGraph:
         graph_builder = StateGraph(IrisState)
+        
+        # Define all nodes
         graph_builder.add_node("initialize_session", self.initialize_session_node)
         graph_builder.add_node("supervisor_decide", self.supervisor_decide_node)
+        graph_builder.add_node("rewrite_for_agent", self.rewrite_for_agent_node)
         graph_builder.add_node(IrisRoute.SAVE_LTM.value, self.save_ltm_node)
         graph_builder.add_node(IrisRoute.LOAD_LTM.value, self.load_ltm_and_respond_node)
         graph_builder.add_node(IrisRoute.FUNDAMENTALS.value, self.call_agent_node)
@@ -223,19 +243,68 @@ class IrisOrchestrator:
         graph_builder.add_node(IrisRoute.OUT_OF_DOMAIN.value, self.out_of_domain_node)
         graph_builder.add_node("synthesize_results", self.synthesize_results_node)
         graph_builder.add_node("log_to_db_and_finalize", self.log_to_db_and_finalize_node)
+        graph_builder.add_node("format_and_stream", self.format_and_stream_node)
         
+        # --- Define Graph Edges ---
         graph_builder.set_entry_point("initialize_session")
         graph_builder.add_edge("initialize_session", "supervisor_decide")
-        graph_builder.add_conditional_edges("supervisor_decide", lambda s: s["supervisor_decision"].route.value, {r.value: r.value for r in IrisRoute})
+
+        # Routes that need a rewrite step before calling an agent
+        agent_routes_that_need_rewrite = {
+            IrisRoute.FUNDAMENTALS,
+            IrisRoute.TECHNICALS,
+            IrisRoute.SENTIMENT,
+            IrisRoute.CROSS_AGENT_REASONING,
+        }
+
+        def route_from_supervisor(state: IrisState):
+            route = state["supervisor_decision"].route
+            if route in agent_routes_that_need_rewrite:
+                return "rewrite_for_agent"
+            return route.value
+            
+        graph_builder.add_conditional_edges(
+            "supervisor_decide",
+            route_from_supervisor,
+            {
+                "rewrite_for_agent": "rewrite_for_agent",
+                IrisRoute.SAVE_LTM.value: IrisRoute.SAVE_LTM.value,
+                IrisRoute.LOAD_LTM.value: IrisRoute.LOAD_LTM.value,
+                IrisRoute.CLARIFICATION.value: IrisRoute.CLARIFICATION.value,
+                IrisRoute.GENERAL.value: IrisRoute.GENERAL.value,
+                IrisRoute.OUT_OF_DOMAIN.value: IrisRoute.OUT_OF_DOMAIN.value,
+            }
+        )
+
+        # After rewriting, route to the originally intended agent
+        def route_after_rewrite(state: IrisState):
+            return state["supervisor_decision"].route.value
+
+        graph_builder.add_conditional_edges(
+            "rewrite_for_agent",
+            route_after_rewrite,
+            {route.value: route.value for route in agent_routes_that_need_rewrite}
+        )
         
+        # Connect agent outputs to their next steps
         graph_builder.add_edge(IrisRoute.CROSS_AGENT_REASONING.value, "synthesize_results")
-        graph_builder.add_edge("synthesize_results", "log_to_db_and_finalize")
-        for route in [r for r in IrisRoute if r != IrisRoute.CROSS_AGENT_REASONING]:
-            graph_builder.add_edge(route.value, "log_to_db_and_finalize")
+        graph_builder.add_edge("synthesize_results", "format_and_stream")
+        
+        # Connect all other terminal nodes to the formatter
+        direct_to_format_nodes = [
+            IrisRoute.FUNDAMENTALS.value, IrisRoute.TECHNICALS.value, IrisRoute.SENTIMENT.value,
+            IrisRoute.SAVE_LTM.value, IrisRoute.LOAD_LTM.value, IrisRoute.CLARIFICATION.value,
+            IrisRoute.GENERAL.value, IrisRoute.OUT_OF_DOMAIN.value
+        ]
+        for node in direct_to_format_nodes:
+            graph_builder.add_edge(node, "format_and_stream")
+
+        graph_builder.add_edge("format_and_stream", "log_to_db_and_finalize")
         graph_builder.add_edge("log_to_db_and_finalize", END)
         return graph_builder
 
-    # --- Node Implementations ---
+    
+
     async def initialize_session_node(self, state: IrisState) -> Dict:
         if state.get("db_user_id"): return {}
         user_identifier, thread_id = state["user_identifier"], state["thread_id"]
@@ -253,7 +322,33 @@ class IrisOrchestrator:
             print(f"Supervisor Decision: Route='{decision.route.value}', Reason='{decision.reasoning}'")
             return {"supervisor_decision": decision}
         except Exception as e:
+            traceback.print_exc()
             return {"supervisor_decision": SupervisorDecision(route=IrisRoute.CLARIFICATION, reasoning=f"Supervisor Error: {e}")}
+
+    async def rewrite_for_agent_node(self, state: IrisState) -> Dict:
+        print("---NODE: Rewrite Question for Agent---")
+        user_input = state["user_input"]
+        history = state.get('full_chat_history', [])
+
+        if not history:
+            print("No history, not rewriting.")
+            return {} 
+
+        history_str = "\n".join([f"{m.type}: {m.content}" for m in history[-6:]])
+        prompt = REWRITE_QUESTION_PROMPT.format(chat_history=history_str, question=user_input)
+        response = await groq_llm_fast.ainvoke(prompt)
+        rewritten_str = response.content.strip().strip('"')
+
+        if rewritten_str.lower() != user_input.lower():
+            print(f"Original question: '{user_input}'")
+            print(f"Rewritten question for agent: '{rewritten_str}'")
+            return {"user_input": rewritten_str}
+        else:
+            print("Question is already self-contained.")
+            return {}
+
+
+
 
     async def save_ltm_node(self, state: IrisState) -> Dict:
         print("---NODE: Save LTM (Read-Update-Write)---")
@@ -323,15 +418,11 @@ class IrisOrchestrator:
 
     async def call_agent_node(self, state: IrisState) -> Dict:
         # Rewrite the question to be self-contained (this part is correct)
-        standalone_question = await _get_standalone_question(state)
+        standalone_question = state["user_input"]
         
         route = state["supervisor_decision"].route
 
-        # --- FIX: Create the correct payload based on the agent being called ---
-        if route == IrisRoute.SENTIMENT:
-            payload = {"query": standalone_question}
-        else: # For Fundamentals and Technicals
-            payload = {"question": standalone_question}
+        payload = {"question": standalone_question}
         
         agent_map = {
             IrisRoute.FUNDAMENTALS: fundamentals_app_instance,
@@ -366,18 +457,111 @@ class IrisOrchestrator:
         response = await groq_llm_fast.ainvoke(prompt)
         return {"final_response": response.content}
 
+    async def format_and_stream_node(self, state: IrisState):
+        """
+        This is the final gatekeeper node. It takes the generated response,
+        formats it for the end-user, and streams it back, while also ensuring
+        the final, complete response is passed on in the state.
+        """
+        print("---NODE: Format and Stream Final Answer---")
+        
+        response_from_agent = state.get("final_response", "I'm sorry, I encountered an issue.")
+
+        simple_responses = [
+            "Got it, I've saved that for you.",
+            "I am IRIS, an AI financial analyst. I can only answer questions related to the stock market and financial data."
+        ]
+        if response_from_agent in simple_responses or "Sorry, I had trouble" in response_from_agent:
+             yield {"final_response": response_from_agent}
+             return
+        
+        formatting_prompt = PromptTemplate.from_template(
+       """
+            You are IRIS, a financial assistant AI. Your final and most important job is to take an internal data summary and format it into a final, user-facing response. The response must be perfectly formatted as markdown AND be a direct, conversational answer to the user's original question.
+
+            **User's Original Question:**
+            ---
+            {user_question}
+            ---
+
+            **Internal Analysis Summary (raw data):**
+            ---
+            {raw_answer}
+            ---
+
+            **--- Part 1: Your Thought Process (for content) ---**
+            1.  **Analyze Intent:** First, I will read the User's Original Question to understand their specific goal (e.g., "what is..?", "should I buy..?", "is it strong?").
+            2.  **Extract Key Data:** I will read the Internal Analysis Summary to find the core data points and verdicts.
+            3.  **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. If they asked "Should I buy?", my answer will address the "buy" decision. I will not say "Hold" to a user who doesn't own the stock. I will be concise and use simple language.
+            4.  **Layman Language:** Keep in mind that user might not be very technical or stock market expert, so answer in simple language.
+
+            **--- Part 2: Your Formatting Rules (for appearance) ---**
+            -   **No Fluff:** My response MUST NOT begin with any conversational filler like "Here is the response:".
+            -   **Main Title:** I will begin with a Level 2 Markdown Heading (`##`) that includes the company name if applicable.
+            -   **Sections:** I will use Level 3 Markdown Headings (`###`) for different analysis types (e.g., Fundamental, Technical).
+            -   **Lists:** I will use a hyphen (`- `) for all bullet points.
+            -   **Emphasis:** I will use bold markdown (`**text**`) for key terms, data points, and final verdicts like **Buy**, **Sell**, or **Hold**.
+            -   **Structure:** The entire output must be valid GitHub-flavored Markdown.
+            -   **Sentiment: Instead of using technical phrases such as bullish or bearish, explain it in simpler words
+
+            **--- Example of a PERFECT Final Output ---**
+            *If the user asked "Is xyz strong?" and the internal summary was "Fundamental: Hold. Technical: Buy. Sentiment: Neutral. Overall: Buy."*
+
+            ```markdown
+            ## xyz Analysis
+            ### Summary
+            Overall, the analysis suggests that **Reliance Industries** is looking quite **strong**.
+
+            ### Detailed Breakdown
+            - **Fundamental Analysis:** The data suggests a **Hold**, indicating solid but potentially fully-priced core metrics.
+            - **Technical Analysis:** The chart indicators are giving a clear **Buy** signal, showing positive momentum.
+            - **Sentiment Analysis:** Market sentiment is currently **Neutral**.
+
+            Now, applying BOTH your thought process and formatting rules, transform the internal summary into the final, perfect, user-facing markdown response.
+            """
+        )
+
+        user_question = state.get("user_input", "the user's request.")
+
+        formatter_chain = formatting_prompt | groq_llm
+
+        final_answer_stream = formatter_chain.astream(
+            {"raw_answer": response_from_agent,
+                "user_question": user_question},
+            config={"run_name": "final_user_output_stream"}
+        )
+
+        # --- THIS IS THE CRUCIAL FIX ---
+        # We need to accumulate the full response *inside* this node
+        # and return it at the end to properly update the graph's state.
+        full_formatted_response = ""
+        async for chunk in final_answer_stream:
+            # 1. Yield the chunk for the frontend to stream
+            yield {"final_response": chunk.content}
+            # 2. Accumulate the chunk to build the full response
+            full_formatted_response += chunk.content
+
+        # 3. After the stream is complete, return the final, accumulated
+        #    response. This correctly updates the state for the next node.
+        yield {"final_response": full_formatted_response}
+
     async def log_to_db_and_finalize_node(self, state: IrisState) -> Dict:
-        user_input, final_response = state["user_input"], state.get("final_response") or "I'm sorry, I cannot respond."
+        # Log the original user input, not the rewritten one
+        user_input = state.get("original_user_input", state["user_input"])
+        final_response = state.get("final_response") or "I'm sorry, I cannot respond."
+        
         await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "user", user_input)
         await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "assistant", final_response)
+        
         new_history = state["full_chat_history"] + [HumanMessage(content=user_input), AIMessage(content=final_response)]
         print(f"Final Response:\n{final_response}")
-        return {"final_response": final_response, "full_chat_history": new_history}
+        # Clear the original input to prepare for the next turn
+        return {"final_response": final_response, "full_chat_history": new_history, "original_user_input": None}
 
 
     async def staggered_parallel_agent_call_node(self, state: IrisState) -> Dict:
         # Rewrite the question ONCE (this part is correct)
-        standalone_question = await _get_standalone_question(state)
+        standalone_question = state["user_input"]
 
         # --- NEW STEP: Extract the primary entity from the question ---
         # This gives us a clean entity name to pass to all agents.
@@ -439,50 +623,13 @@ if __name__ == "__main__":
             print(f"User: {test_user}, Thread: {thread_id}")
 
             test_interactions = [
-            #     # technicals questions
-            #     "What is RSI?", 
-            #     "Is Reliance overbought?", 
-            #     "How volatile is Aegis Logistics now?", 
-            #     "stochastic for Ambalal Sarabhai", 
-            #  "Is Reliance strong?", 
-            #     "Should i buy Ambalal Sarabhai?",
-            #     "Should I buy reliance based on Bollinger Bands",
-            #     "Should I buy reliance based on RSI?", 
-            #     "Should I buy reliance based on MACD?",
-            #     "Should I buy Reliance Industries based on RSI, MACD, and Supertrend?", # Explicit multi-indicator
-            #     "Is Reliance Industries a good buy right now?", 
-
-            # "What is the market cap of Reliance Industries and the latest sales for ABB India?",
-            # "What is the business description of Ambalal Sarabhai?",
-            # "What are the top 5 companies by market cap?",
-            # "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
-            # "Scripcode and fincode of ABB India",
-            # "What is the latest promoter shareholding percentage for Reliance Industries?",
-            # "List all distinct industries",
-            # "I prefer long term investments and my fav stock is Reliance Industries",
-            # "What is my investment style?",
-            # "and my fav stock?"
-            # "My fav stock is Reliance Industies",
-            # "My fav stock is ABB India now",
-            # "But i also love Aegis Logistics",
-            # "and i prefer to use EMA"
-            # "Whats my fav stocks?",
-            # "and which indicator do i use?",
-            # "I also love RSI and MACD",
-            # "Now tell me which are the indicators that i use?",
-            # "Reliance Industries",
-            # "tell me the market cap of it",
-            # "Now tell me its latest closing price",
-            # "Reliance",
-            # "adani",
-            # "hi",
-            # "How are you",
-            # "who invented TV",
-
-            # cross agent reasoning
-            "Is Reliance Industries strong?",
-            "Should i buy Ambalal Sarabhai?",
-            "Is Reliance Industries a good buy right now?"
+                "hi",
+                "hello",
+                "my fav stock is Titan Company and i mostly use RSI and EMA indicators",
+                "What is my fav stock and which indicators do i prefer to use?",
+                "Reliance Industries",
+                "I wanna know the First option"
+         
             ]
 
             
@@ -497,4 +644,23 @@ if __name__ == "__main__":
                     print(f"\n<<< CRITICAL ERROR during invocation: {e}")
                     traceback.print_exc()
                 print("----------------------------------------------------")
+
+            # --- Graph Visualization Logic ---
+            try:
+                print("\nAttempting to generate IRIS graph visualization (graphs/iris_v1.png)...")
+                
+                # Ensure the 'graphs' directory exists
+                if not os.path.exists("graphs"):
+                    os.makedirs("graphs")
+                    
+                # Get the graph from the compiled app instance
+                img_data = orchestrator.app.get_graph().draw_mermaid_png()
+                
+                with open("graphs/iris_v1.png", "wb") as f:
+                    f.write(img_data)
+                print("IRIS graph saved to graphs/iris_v1.png")
+            except Exception as e:
+                print(f"Could not generate IRIS graph visualization: {e}")
+                print("Please ensure you have run: pip install 'langchain[graphviz]' playwright && playwright install")
+
     asyncio.run(run_test_session())
