@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from db_config import ASYNC_DATABASE_URL
 # --- RAG INTEGRATION: Import the NEW intelligent context provider ---
 from agents.rag_context_provider import get_intelligent_context
+from pydantic import BaseModel, Field, model_validator
+from typing import Dict, Any
+
 
 # Custom module imports
 from model_config import groq_llm,groq_llm_fast
@@ -38,8 +41,26 @@ class GeneralizedQuery(BaseModel):
     generalized_question: str = Field(description="A generic question for RAG context retrieval, with specific entity names removed.")
 
 class SQLQuery(BaseModel):
-    query: str = Field(description="A single, syntactically valid SQL query.")
-
+    # We make the query field optional at first, as we will populate it in the validator.
+    query: Optional[str] = None
+    
+    # This validator runs after the initial fields are processed.
+    @model_validator(mode='before')
+    @classmethod
+    def check_and_assign_query(cls, data: Any) -> Any:
+        # Ensure data is a dictionary
+        if not isinstance(data, dict):
+            raise ValueError('SQLQuery input must be a dictionary')
+            
+        # Check for 'sql' key and assign to 'query'
+        if 'sql' in data:
+            data['query'] = data.pop('sql')
+        
+        # If 'query' is still not in data after checking for 'sql', then it's a validation error.
+        if 'query' not in data or not data['query']:
+             raise ValueError("A 'query' or 'sql' key with a valid SQL string is required.")
+             
+        return data
 
 # --- Agent State ---
 class FundamentalsAgentState(TypedDict):
@@ -205,24 +226,24 @@ Now, following my rigorous thought process and trusting the Golden Schema above 
 """
 
 ANSWER_COMPOSER_PROMPT = """
-You are IRIS, a financial assistant. Your goal is to provide a clear, simple, and direct answer in 3-4 lines. Your tone is helpful and professional. Your audience is non-technical.
+    You are IRIS, a financial assistant. Your goal is to provide a clear, simple, and direct answer in 3-4 lines. Your tone is helpful and professional. Your audience is non-technical.
 
---- Data Collected ---
-Query Results (JSON format): {results_summary}
----
+    --- Data Collected ---
+    Query Results (JSON format): {results_summary}
+    ---
 
-**CRITICAL RULES:**
-1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
-2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
-3.  **Use Full Names:** Use full company names from the results.
-4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
-5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
-6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
+    **CRITICAL RULES:**
+    1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
+    2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
+    3.  **Use Full Names:** Use full company names from the results.
+    4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
+    5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
+    6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
 
-7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
-    - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
+    7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
+        - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
 
-Now, synthesize the final answer based on the data and these rules.
+    Now, synthesize the final answer based on the data and these rules.
 """
 
 # --- Agent Nodes ---
@@ -479,16 +500,16 @@ app = graph_builder.compile()
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
-            "Is Reliance strong based on Fundamental Analysis?",
-            "What is the market cap of Reliance Industries and the latest sales for ABB India?",
-            "What is the business description of Ambalal Sarabhai?",
-            "What are the top 5 companies by market cap?",
-            "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
-            "Scripcode and fincode of ABB India",
-            "What is the latest promoter shareholding percentage for Reliance Industries?",
-            "List all distinct industries",
+            # "Is Reliance strong based on Fundamental Analysis?",
+            # "What is the market cap of Reliance Industries and the latest sales for ABB India?",
+            # "What is the business description of Ambalal Sarabhai?",
+            # "What are the top 5 companies by market cap?",
+            # "Compare the market cap of Reliance Industries and Ambalal Sarabhai",
+            # "Scripcode and fincode of ABB India",
+            # "What is the latest promoter shareholding percentage for Reliance Industries?",
+            # "List all distinct industries",
 
-       
+"What are the top 5 companies by market capitalization?"       
 
         ]
         for q_text in test_queries:

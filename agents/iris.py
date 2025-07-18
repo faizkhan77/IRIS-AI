@@ -140,22 +140,29 @@ REWRITE_QUESTION_PROMPT = """You are an expert at creating self-contained, stand
 Your task is to analyze the user's latest input and the recent conversation history, then rewrite the user's input into a complete query that can be understood without any of the previous context.
 
 **Strict Rules:**
-1.  **Resolve all context:** Replace pronouns (e.g., "it", "that") and references (e.g., "the first option", "tell me more") with the specific entities and topics they refer to from the chat history.
-2.  **Preserve Intent:** If the original input is a question, the output must be a question. If it's a statement/command, the output must be a statement/command.
-3.  **Be Concise:** Your entire output must be ONLY the final, rewritten query. Do not add any extra text or explanations.
-4.  **No-Op:** If the user's input is already a complete, standalone query (e.g., "What is the PE ratio of Reliance Industries?"), return it exactly as is.
+1.  **Resolve Context for Follow-ups:** ONLY if the user's input is a clear follow-up (e.g., "the first option", "what about them?", "tell me more"), use the history to resolve pronouns and references.
+2.  **DO NOT Add Context to New Topics:** If the user's input introduces a new, specific subject (e.g., "What are the top 5 companies by market cap?", "How is Tata Motors doing?"), you MUST assume it is a new, unrelated query. DO NOT inject context from the previous conversation into it.
+3.  **Preserve Intent:** If the original input is a question, the output must be a question. If it's a statement/command, the output must be a statement/command.
+4.  **Be Concise:** Your entire output must be ONLY the final, rewritten query. Do not add any extra text or explanations.
+5.  **No-Op:** If the user's input is already a complete, standalone query, return it EXACTLY AS IS.
 
-**--- Example ---**
+**--- Example of a Follow-up (Rule 1) ---**
 **Chat History:**
-assistant: To provide a comprehensive analysis of Reliance Industries, we need more specific information...
+assistant: To provide analysis of Reliance Industries, we need more info...
 - **Financial Performance:** Stock price, revenue, and profit margins.
-- **Business Operations:** Energy, retail, and petrochemicals sectors.
 **User Input:**
 I wanna know the First option
-
 **Rewritten, Self-Contained User Input:**
 What is the financial performance of Reliance Industries?
-**--- End Example ---**
+
+**--- Example of a New Topic (Rule 2) ---**
+**Chat History:**
+assistant: The analysis for Reliance Industries is complete.
+**User Input:**
+What are the top 5 companies by market capitalization?
+**Rewritten, Self-Contained User Input:**
+What are the top 5 companies by market capitalization?
+**--- End Examples ---**
 
 Now, perform this task on the following inputs.
 
@@ -423,6 +430,11 @@ class IrisOrchestrator:
         route = state["supervisor_decision"].route
 
         payload = {"question": standalone_question}
+
+        if route == IrisRoute.SENTIMENT:
+            payload = {"query": standalone_question}
+        else:
+            payload = {"question": standalone_question}
         
         agent_map = {
             IrisRoute.FUNDAMENTALS: fundamentals_app_instance,
@@ -628,7 +640,10 @@ if __name__ == "__main__":
                 "my fav stock is Titan Company and i mostly use RSI and EMA indicators",
                 "What is my fav stock and which indicators do i prefer to use?",
                 "Reliance Industries",
-                "I wanna know the First option"
+                "I wanna know the First option",
+                "What are the top 5 companies by market capitalization?",
+                "what is the market cap of ABB India",
+                "What is the latest market capitalization and net sales of Reliance Industries?"
          
             ]
 
