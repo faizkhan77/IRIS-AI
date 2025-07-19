@@ -70,8 +70,9 @@ class FundamentalsAgentState(TypedDict):
     rag_contexts: Optional[Dict[str, str]]
     sql_queries: Optional[Dict[str, str]]
     query_results: Optional[Dict[str, str]]
+    chart_data: Optional[Dict[str, List[Dict[str, Any]]]]
     error_message: Optional[str]
-    final_answer: str
+    final_answer: Dict[str, Any]
 
 # --- Prompts (Overhauled for Robustness) ---
 
@@ -226,24 +227,34 @@ Now, following my rigorous thought process and trusting the Golden Schema above 
 """
 
 ANSWER_COMPOSER_PROMPT = """
-    You are IRIS, a financial assistant. Your goal is to provide a clear, simple, and direct answer in 3-4 lines. Your tone is helpful and professional. Your audience is non-technical.
+You are IRIS, a sharp and confident financial analyst AI. Your goal is to synthesize raw data into a final, user-facing response formatted perfectly as Markdown.
 
-    --- Data Collected ---
-    Query Results (JSON format): {results_summary}
-    ---
+--- Data Collected ---
+Query Results (JSON format): {results_summary}
+---
 
-    **CRITICAL RULES:**
-    1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
-    2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
-    3.  **Use Full Names:** Use full company names from the results.
-    4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
-    5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
-    6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
+**--- Part 1: Your Thought Process (for content) ---**
+1.  **Analyze Intent:** First, I will understand the user's original question: "{question}".
+2.  **Extract Key Data:** I will read the JSON `results_summary` to find all the core data points and verdicts.
+3.  **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
+4.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
+5.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
+6.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
 
-    7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
-        - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
 
-    Now, synthesize the final answer based on the data and these rules.
+**Part 2: CRITICAL RULES:**
+1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
+2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
+3.  **Use Full Names:** Use full company names from the results.
+4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
+5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
+6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
+
+7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
+    - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
+
+
+Now, applying BOTH your thought process and formatting rules, transform the internal JSON data into the final, perfect, user-facing markdown response.
 """
 
 # --- Agent Nodes ---
@@ -324,6 +335,64 @@ async def execute_health_checklist_node(state: FundamentalsAgentState) -> Dict:
     finally:
         print("--- Disposing of temporary database engine ---")
         await async_engine_instance.dispose()
+
+
+async def get_price_history_for_chart_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Fetches the last year of daily price history for each entity.
+    This data is specifically for rendering a UI chart on the frontend.
+    """
+    print("---NODE: Get Price History for UI Chart---")
+    entities = state["extraction"].entities
+    if not entities:
+        # This node should only run if there are entities, but as a safeguard:
+        return {}
+
+    # Fetches the last year of trading data (approx. 252 days)
+    price_history_query = text("""
+        SELECT
+            date, `open`, high, low, `close`, volume
+        FROM bse_abjusted_price_eod
+        WHERE fincode = :fincode
+        ORDER BY date DESC
+        LIMIT 252
+    """)
+
+    async_engine_instance = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    chart_data_results = {}
+
+    try:
+        async with async_engine_instance.connect() as connection:
+            for entity in entities:
+                entity_name = entity.entity_name
+                print(f"Fetching price history for: {entity_name}")
+
+                fincode_query = text("SELECT fincode FROM company_master WHERE compname LIKE :company_name_pattern LIMIT 1")
+                fincode_result = await connection.execute(fincode_query, {"company_name_pattern": f"%{entity_name}%"})
+                fincode = fincode_result.scalar_one_or_none()
+
+                if fincode:
+                    result = await connection.execute(price_history_query, {"fincode": fincode})
+                    # Convert rows to a list of dicts, format date to string for JSON
+                    rows = [
+                        {**row, "date": row["date"].isoformat()}
+                        for row in result.mappings().all()
+                    ]
+                    # The data should be chronological for charting
+                    chart_data_results[entity_name] = rows[::-1]
+                else:
+                    chart_data_results[entity_name] = [] # No data found
+
+        return {"chart_data": chart_data_results}
+
+    except Exception as e:
+        error_msg = f"Error fetching price history data: {e!r}"
+        print(error_msg)
+        # We can return an empty dict or add to an error log in the state
+        return {"chart_data": {}}
+    finally:
+        await async_engine_instance.dispose()
+
 
 async def parallel_generalize_and_rag_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Parallel Generalize & RAG---")
@@ -428,25 +497,72 @@ async def parallel_execute_queries_node(state: FundamentalsAgentState) -> Dict:
         print("--- Disposing of temporary database engine ---")
         await async_engine.dispose()
 
+
 async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
-    print("---NODE: Compose Final Answer---")
-    if state.get("error_message"):
-        return {"final_answer": state["error_message"]}
+    """
+    Assembles the final structured response. It generates the text summary using an LLM
+    and then intelligently packages it with any relevant UI components based on the data shape.
+    """
+    print("---NODE: Compose Final Structured Answer---")
     
+    if state.get("error_message"):
+        return {"final_answer": {"text_response": state["error_message"], "ui_components": []}}
+
+    # --- NEW LOGIC TO PREPARE UI COMPONENTS ---
+    ui_components = []
     query_results = state.get("query_results", {})
     
-    results_summary = "No database results were retrieved."
-    if query_results:
-        results_summary = json.dumps(query_results, indent=2)
+    # Check for chart data from the health check path
+    chart_data = state.get("chart_data")
+    if chart_data:
+        for entity_name, data_points in chart_data.items():
+            if data_points:
+                ui_components.append({
+                    "type": "stock_price_chart",
+                    "title": f"{entity_name} Price History",
+                    "data": data_points
+                })
 
+    # Check for data suitable for a ranking bar chart
+    if not ui_components and "General Query" in query_results:
+        try:
+            ranking_data = json.loads(query_results["General Query"])
+            # Check if it's a list of dictionaries with at least 2 keys (a name and a value)
+            if isinstance(ranking_data, list) and all(isinstance(i, dict) and len(i.keys()) >= 2 for i in ranking_data):
+                print("--- Data suitable for Ranking Bar Chart detected ---")
+                # Identify the label (compname) and the value (the other key)
+                keys = list(ranking_data[0].keys())
+                label_key = 'compname' if 'compname' in keys else keys[0]
+                value_key = next((k for k in keys if k != label_key), keys[1])
+
+                ui_components.append({
+                    "type": "ranking_bar_chart",
+                    "title": f"Top {len(ranking_data)} by {value_key.replace('_', ' ').title()}",
+                    "data": ranking_data,
+                    "labelKey": label_key,
+                    "valueKey": value_key,
+                })
+        except (json.JSONDecodeError, IndexError):
+            print("Could not parse General Query result for bar chart.")
+
+    # --- Generate the text-based summary using the LLM (existing logic) ---
+    results_summary = json.dumps(query_results) if query_results else "No database results."
+    
     prompt = ANSWER_COMPOSER_PROMPT.format(
         question=state["question"],
         results_summary=results_summary
     )
-    response = await groq_llm.ainvoke(prompt)
-    return {"final_answer": response.content}
+    llm_response = await groq_llm.ainvoke(prompt)
+    text_answer = llm_response.content
+    
+    # --- Combine into a single final answer object ---
+    final_answer_object = {
+        "text_response": text_answer,
+        "ui_components": ui_components
+    }
 
-# --- Graph Definition ---
+    return {"final_answer": final_answer_object}
+
 def route_after_extraction(state: FundamentalsAgentState) -> str:
     """
     Decides the path after the initial query extraction.
@@ -469,29 +585,45 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
         return "general_path"
         
 graph_builder = StateGraph(FundamentalsAgentState)
+
+# Add all nodes, including our new one
 graph_builder.add_node("extract", extract_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
 graph_builder.add_node("execute_queries", parallel_execute_queries_node)
 graph_builder.add_node("execute_health_checklist", execute_health_checklist_node)
+# --- NEW NODE ADDED TO GRAPH ---
+graph_builder.add_node("get_price_history", get_price_history_for_chart_node)
 graph_builder.add_node("compose_answer", compose_final_answer_node)
 
 graph_builder.set_entry_point("extract")
+
 graph_builder.add_conditional_edges(
     "extract",
     route_after_extraction,
     {
-        "health_check_path": "execute_health_checklist",
+        "health_check_path": "execute_health_checklist", # Route to health check first
         "rag_path": "generalize_and_rag", 
         "general_path": "compose_answer", 
         "end": END
     }
 )
+
+# --- MODIFIED EDGES FOR THE HEALTH CHECK PATH ---
+# After fetching health metrics, now fetch the price history for the chart
+graph_builder.add_edge("execute_health_checklist", "get_price_history")
+# After fetching chart data, compose the final structured answer
+graph_builder.add_edge("get_price_history", "compose_answer")
+
+
+# Edges for the standard RAG path remain the same
 graph_builder.add_edge("generalize_and_rag", "write_queries")
 graph_builder.add_edge("write_queries", "execute_queries")
 graph_builder.add_edge("execute_queries", "compose_answer")
-graph_builder.add_edge("execute_health_checklist", "compose_answer")
+
+# Final edge to the end
 graph_builder.add_edge("compose_answer", END)
+
 app = graph_builder.compile()
 
 
@@ -500,7 +632,7 @@ app = graph_builder.compile()
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
-            # "Is Reliance strong based on Fundamental Analysis?",
+            "Is Reliance strong based on Fundamental Analysis?",
             # "What is the market cap of Reliance Industries and the latest sales for ABB India?",
             # "What is the business description of Ambalal Sarabhai?",
             # "What are the top 5 companies by market cap?",
@@ -509,7 +641,7 @@ if __name__ == "__main__":
             # "What is the latest promoter shareholding percentage for Reliance Industries?",
             # "List all distinct industries",
 
-"What are the top 5 companies by market capitalization?"       
+# "What are the top 5 companies by market capitalization?"       
 
         ]
         for q_text in test_queries:

@@ -235,7 +235,7 @@ class IrisOrchestrator:
     def _build_graph(self) -> StateGraph:
         graph_builder = StateGraph(IrisState)
         
-        # Define all nodes
+        # --- Define all nodes (this part is unchanged) ---
         graph_builder.add_node("initialize_session", self.initialize_session_node)
         graph_builder.add_node("supervisor_decide", self.supervisor_decide_node)
         graph_builder.add_node("rewrite_for_agent", self.rewrite_for_agent_node)
@@ -249,19 +249,18 @@ class IrisOrchestrator:
         graph_builder.add_node(IrisRoute.GENERAL.value, self.general_node)
         graph_builder.add_node(IrisRoute.OUT_OF_DOMAIN.value, self.out_of_domain_node)
         graph_builder.add_node("synthesize_results", self.synthesize_results_node)
-        graph_builder.add_node("log_to_db_and_finalize", self.log_to_db_and_finalize_node)
         graph_builder.add_node("format_and_stream", self.format_and_stream_node)
+        graph_builder.add_node("log_to_db_and_finalize", self.log_to_db_and_finalize_node)
         
-        # --- Define Graph Edges ---
+        # --- Define Graph Edges (This logic is NEW and REPLACES the old edge definitions) ---
+        
+        # Entry point and supervisor routing are the same
         graph_builder.set_entry_point("initialize_session")
         graph_builder.add_edge("initialize_session", "supervisor_decide")
 
-        # Routes that need a rewrite step before calling an agent
         agent_routes_that_need_rewrite = {
-            IrisRoute.FUNDAMENTALS,
-            IrisRoute.TECHNICALS,
-            IrisRoute.SENTIMENT,
-            IrisRoute.CROSS_AGENT_REASONING,
+            IrisRoute.FUNDAMENTALS, IrisRoute.TECHNICALS,
+            IrisRoute.SENTIMENT, IrisRoute.CROSS_AGENT_REASONING,
         }
 
         def route_from_supervisor(state: IrisState):
@@ -270,47 +269,61 @@ class IrisOrchestrator:
                 return "rewrite_for_agent"
             return route.value
             
-        graph_builder.add_conditional_edges(
-            "supervisor_decide",
-            route_from_supervisor,
-            {
-                "rewrite_for_agent": "rewrite_for_agent",
-                IrisRoute.SAVE_LTM.value: IrisRoute.SAVE_LTM.value,
-                IrisRoute.LOAD_LTM.value: IrisRoute.LOAD_LTM.value,
-                IrisRoute.CLARIFICATION.value: IrisRoute.CLARIFICATION.value,
-                IrisRoute.GENERAL.value: IrisRoute.GENERAL.value,
-                IrisRoute.OUT_OF_DOMAIN.value: IrisRoute.OUT_OF_DOMAIN.value,
-            }
-        )
+        graph_builder.add_conditional_edges("supervisor_decide", route_from_supervisor, {
+            "rewrite_for_agent": "rewrite_for_agent",
+            IrisRoute.SAVE_LTM.value: IrisRoute.SAVE_LTM.value,
+            IrisRoute.LOAD_LTM.value: IrisRoute.LOAD_LTM.value,
+            IrisRoute.CLARIFICATION.value: IrisRoute.CLARIFICATION.value,
+            IrisRoute.GENERAL.value: IrisRoute.GENERAL.value,
+            IrisRoute.OUT_OF_DOMAIN.value: IrisRoute.OUT_OF_DOMAIN.value,
+        })
 
-        # After rewriting, route to the originally intended agent
         def route_after_rewrite(state: IrisState):
             return state["supervisor_decision"].route.value
 
-        graph_builder.add_conditional_edges(
-            "rewrite_for_agent",
-            route_after_rewrite,
-            {route.value: route.value for route in agent_routes_that_need_rewrite}
-        )
+        graph_builder.add_conditional_edges("rewrite_for_agent", route_after_rewrite,
+            {route.value: route.value for route in agent_routes_that_need_rewrite})
         
-        # Connect agent outputs to their next steps
-        graph_builder.add_edge(IrisRoute.CROSS_AGENT_REASONING.value, "synthesize_results")
-        graph_builder.add_edge("synthesize_results", "format_and_stream")
-        
-        # Connect all other terminal nodes to the formatter
-        direct_to_format_nodes = [
+        # --- NEW: Decision node to either format or skip formatting ---
+        def route_to_formatter_or_log(state: IrisState):
+            final_response = state.get("final_response")
+            # If the response is a dict, it has UI components. Skip formatting.
+            if isinstance(final_response, dict):
+                print("--- ROUTING: Structured response found. Skipping formatter. ---")
+                return "log_to_db_and_finalize"
+            # Otherwise, it's a simple string that needs formatting.
+            else:
+                print("--- ROUTING: Simple response found. Sending to formatter. ---")
+                return "format_and_stream"
+
+        # Define the nodes that produce a final response that might need formatting
+        nodes_before_formatting = [
             IrisRoute.FUNDAMENTALS.value, IrisRoute.TECHNICALS.value, IrisRoute.SENTIMENT.value,
             IrisRoute.SAVE_LTM.value, IrisRoute.LOAD_LTM.value, IrisRoute.CLARIFICATION.value,
-            IrisRoute.GENERAL.value, IrisRoute.OUT_OF_DOMAIN.value
+            IrisRoute.GENERAL.value, IrisRoute.OUT_OF_DOMAIN.value, "synthesize_results"
         ]
-        for node in direct_to_format_nodes:
-            graph_builder.add_edge(node, "format_and_stream")
 
+        # Route all these nodes to our new decision point
+        for node in nodes_before_formatting:
+            graph_builder.add_conditional_edges(
+                node,
+                route_to_formatter_or_log,
+                {
+                    "format_and_stream": "format_and_stream",
+                    "log_to_db_and_finalize": "log_to_db_and_finalize"
+                }
+            )
+
+        # Cross-agent reasoning still goes to synthesis first
+        graph_builder.add_edge(IrisRoute.CROSS_AGENT_REASONING.value, "synthesize_results")
+        
+        # The output of the formatter ALWAYS goes to the logger
         graph_builder.add_edge("format_and_stream", "log_to_db_and_finalize")
+        
+        # The final step is always logging, which then ends the graph
         graph_builder.add_edge("log_to_db_and_finalize", END)
-        return graph_builder
 
-    
+        return graph_builder
 
     async def initialize_session_node(self, state: IrisState) -> Dict:
         if state.get("db_user_id"): return {}
@@ -423,13 +436,12 @@ class IrisOrchestrator:
             traceback.print_exc()
             return {"final_response": f"Sorry, I had trouble retrieving your preferences. Error: {e}"}
 
+
     async def call_agent_node(self, state: IrisState) -> Dict:
         # Rewrite the question to be self-contained (this part is correct)
         standalone_question = state["user_input"]
         
         route = state["supervisor_decision"].route
-
-        payload = {"question": standalone_question}
 
         if route == IrisRoute.SENTIMENT:
             payload = {"query": standalone_question}
@@ -445,8 +457,15 @@ class IrisOrchestrator:
             # Sub-agents now receive a payload with the correct key
             print(f"--- Calling {route.name} agent with payload: {payload} ---")
             result_state = await agent_map[route].ainvoke(payload)
+            
+            # --- MODIFIED: Pass the entire final_answer object (str OR dict) ---
             response = result_state.get("final_answer")
-            return {"final_response": response or "The agent could not find an answer."}
+            
+            if response:
+                return {"final_response": response}
+            else:
+                return {"final_response": f"The {route.name.title()} agent could not find an answer."}
+
         except Exception as e: 
             return {"final_response": f"The {route.name.title()} agent encountered an error: {e!r}"}
 
@@ -558,18 +577,26 @@ class IrisOrchestrator:
         yield {"final_response": full_formatted_response}
 
     async def log_to_db_and_finalize_node(self, state: IrisState) -> Dict:
-        # Log the original user input, not the rewritten one
         user_input = state.get("original_user_input", state["user_input"])
-        final_response = state.get("final_response") or "I'm sorry, I cannot respond."
+        final_response_obj = state.get("final_response") or "I'm sorry, I cannot respond."
         
+        # --- NEW: Handle both string and dict responses ---
+        if isinstance(final_response_obj, dict):
+            # It's our structured response with UI components
+            assistant_response_for_log = final_response_obj.get("text_response", "Response generated.")
+        else:
+            # It's a simple string response
+            assistant_response_for_log = str(final_response_obj)
+            
         await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "user", user_input)
-        await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "assistant", final_response)
+        await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "assistant", assistant_response_for_log)
         
-        new_history = state["full_chat_history"] + [HumanMessage(content=user_input), AIMessage(content=final_response)]
-        print(f"Final Response:\n{final_response}")
-        # Clear the original input to prepare for the next turn
-        return {"final_response": final_response, "full_chat_history": new_history, "original_user_input": None}
+        new_history = state["full_chat_history"] + [HumanMessage(content=user_input), AIMessage(content=assistant_response_for_log)]
+        
+        print(f"Final Response Object being sent to API:\n{final_response_obj}")
 
+        # Return the full object (dict or str) for the API, and update history
+        return {"final_response": final_response_obj, "full_chat_history": new_history, "original_user_input": None}
 
     async def staggered_parallel_agent_call_node(self, state: IrisState) -> Dict:
         # Rewrite the question ONCE (this part is correct)

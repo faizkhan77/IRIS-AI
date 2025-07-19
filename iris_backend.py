@@ -109,14 +109,12 @@ async def get_session_messages(thread_id: str):
         logger.error(f"Error fetching messages for thread_id {thread_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not fetch messages for session.")
 
-# --- THIS IS THE DEFINITIVE, CORRECTED STREAMING ENDPOINT ---
 @app.post("/chat")
 async def handle_chat_streaming(request: ChatRequest):
     """
-    This endpoint now correctly handles the agent's full output.
-    It runs the agent to completion, captures the final response,
-    and then streams that final response back to the client.
-    This guarantees only the desired output is sent.
+    This endpoint runs the agent to completion, then intelligently streams the
+    final response. It supports both simple text responses and structured
+    GenUI responses with a chart component.
     """
     iris_agent = shared_resources.get("iris_agent")
     if not iris_agent:
@@ -129,32 +127,55 @@ async def handle_chat_streaming(request: ChatRequest):
     }
     config = {"configurable": {"thread_id": request.thread_id}}
 
-    async def stream_generator():
-        final_response_content = None
+    # This is the key difference: we now use Server-Sent Events (SSE)
+    # which is the standard for sending mixed data types like this.
+    async def sse_stream_generator():
         try:
-            # We will use ainvoke to run the graph to completion.
-            # astream_events is for debugging or complex multi-stream UI,
-            # but ainvoke is simpler for getting a final result.
+            # 1. Run the agent to completion. This logic is IDENTICAL to your preferred code.
             final_state = await iris_agent.ainvoke(payload, config)
+            final_response = final_state.get("final_response")
+
+            # 2. Check the type of the final response to decide how to stream.
+            if isinstance(final_response, dict):
+                # CASE A: It's a structured GenUI response (e.g., with a chart)
+                
+                # First, send the UI component data as a single, complete event.
+                ui_components = final_response.get("ui_components", [])
+                if ui_components:
+                    yield f"event: ui_component\ndata: {json.dumps(ui_components)}\n\n"
+                
+                # Then, stream the text part character by character.
+                text_response = final_response.get("text_response", "...")
+                for char in text_response:
+                    chunk_data = json.dumps({"chunk": char})
+                    yield f"event: text_chunk\ndata: {chunk_data}\n\n"
+
+            elif isinstance(final_response, str):
+                # CASE B: It's a simple string response (e.g., "hi", or a formatted answer)
+                
+                # We just stream the text part, character by character.
+                # No ui_component event is sent.
+                for char in final_response:
+                    chunk_data = json.dumps({"chunk": char})
+                    yield f"event: text_chunk\ndata: {chunk_data}\n\n"
             
-            # The final response is in the state after the graph has finished.
-            final_response_content = final_state.get("final_response")
-
-            if not final_response_content:
-                final_response_content = "Sorry, I was unable to generate a response."
-
-            # Now, we stream the final response character by character for a typing effect.
-            # This gives the UI the streaming effect it wants, but with the correct, final data.
-            for char in final_response_content:
-                yield char
-                await asyncio.sleep(0.01) # Small delay for a natural typing feel
+            else:
+                # Fallback for an empty or unexpected response type
+                fallback_text = "Sorry, I was unable to generate a response."
+                for char in fallback_text:
+                    chunk_data = json.dumps({"chunk": char})
+                    yield f"event: text_chunk\ndata: {chunk_data}\n\n"
 
         except Exception as e:
             logger.error(f"Error during agent invocation for {request.thread_id}: {e}", exc_info=True)
-            yield "\n\nAn error occurred while processing your request."
+            error_message = json.dumps({"error": "An error occurred while processing your request."})
+            yield f"event: error\ndata: {error_message}\n\n"
+        finally:
+            # Always send an 'end' event so the client knows when to stop listening.
+            yield "event: end\ndata: {}\n\n"
 
-    return StreamingResponse(stream_generator(), media_type="text/plain")
-
+    # The media type MUST be "text/event-stream" for SSE to work.
+    return StreamingResponse(sse_stream_generator(), media_type="text/event-stream")
 @app.get("/")
 def read_root():
     return {"status": "IRIS API is running"}
