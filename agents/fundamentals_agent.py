@@ -33,8 +33,9 @@ class KnownSchema(BaseModel):
 class ExtractionOutput(BaseModel):
     is_database_required: bool = Field(description="Is database access required to answer the question?")
     is_health_checklist_query: bool = Field(False, description="Set to true ONLY for broad, subjective questions like 'Is [company] strong?', 'Is it a good buy?', or 'fundamental analysis of [company]'.")
+    is_multi_metric_query: bool = Field(False, description="Set to true if the user is asking for more than one specific metric for a company (e.g., 'P/E and Market Cap of...').")
     entities: List[IdentifiedEntity] = Field(description="List of all unique financial entities found in the query.")
-    tasks: Dict[str, str] = Field(description="A dictionary mapping each entity_name (or 'General Query') to a concise description of the data needed for it.")
+    tasks: Dict[str, Any] = Field(description="A dictionary mapping each entity_name (or 'General Query') to a concise description of the data needed for it.")
     known_schema_lookups: Optional[Dict[str, KnownSchema]] = Field(None, description="If a task can be answered by a single known column from the Golden Schema, map the task to its table and column here.")
 
 class GeneralizedQuery(BaseModel):
@@ -144,6 +145,11 @@ EXTRACT_PROMPT = """
     3.  **Specific Metric Query (Default):** If it is neither of the above, it is a query for a specific metric.
         - **Example:** "Market cap of company ABC?"
 
+    2.  **Multi-Metric Query (`is_multi_metric_query`):** If it's NOT a health check, check if the user is asking for **TWO OR MORE** specific metrics for a single company.
+        - **Examples:** "What is the x, y and z of X?", "Give me the x, y, and y for X"
+        - If YES, you MUST set `is_multi_metric_query` to `true`. The `tasks` for that entity MUST be a LIST of the individual metrics requested.
+
+
     **Final JSON Output Rules:**
     - `is_database_required`: Set to true if financial data is needed.
     - `entities`: A list of all distinct company names or stock symbols.
@@ -151,13 +157,17 @@ EXTRACT_PROMPT = """
 
     --- EXAMPLES ---
     User Question: "Is Reliance Industries strong?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": true, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Fundamental health analysis for Reliance Industries"}}, "known_schema_lookups": null}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": true,"is_multi_metric_query": false, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Fundamental health analysis for Reliance Industries"}}, "known_schema_lookups": null}}
 
     User Question: "List all distinct industries"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_multi_metric_query": false, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
 
     User Question: "What is the market cap of Company ABC?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false,"is_multi_metric_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
+
+    User Question: "What is the x and y of Company X?"
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_multi_metric_query": true, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": ["market capitalization", "P/E ratio"]}}, "known_schema_lookups": null}}
+
     ---
     User Question: {question}
     Output ONLY the valid JSON object.
@@ -269,6 +279,64 @@ async def extract_node(state: FundamentalsAgentState) -> Dict:
         return {"error_message": f"Failed to understand the query's structure. Error: {e}"}
 
 
+async def execute_multi_metric_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Handles a query asking for multiple specific metrics for one or more companies.
+    It fans-out to run Text-to-SQL for each metric in parallel.
+    """
+    print("---NODE: Execute Multi-Metric Parallel Queries---")
+    
+    original_extraction = state["extraction"]
+    entity_name = original_extraction.entities[0].entity_name
+    list_of_metrics = original_extraction.tasks[entity_name]
+    
+    tasks_for_sub_graph = {f"{entity_name} - {metric}": f"latest {metric} for {entity_name}" for metric in list_of_metrics}
+    
+    sub_extraction_object = ExtractionOutput(
+        is_database_required=True,
+        is_health_checklist_query=False,
+        is_multi_metric_query=False,
+        entities=original_extraction.entities,
+        tasks=tasks_for_sub_graph,
+        known_schema_lookups={}
+    )
+    
+    # --- STEP 1: Generalize & RAG ---
+    rag_input_state = {"extraction": sub_extraction_object}
+    rag_contexts_result = await parallel_generalize_and_rag_node(rag_input_state)
+    
+    # --- STEP 2: Write SQL ---
+    sql_writer_input_state = {
+        "question": state["question"],
+        "extraction": sub_extraction_object,
+        "rag_contexts": rag_contexts_result["rag_contexts"]
+    }
+    sql_queries_result = await parallel_write_queries_node(sql_writer_input_state)
+    
+    # --- STEP 3: Execute SQL (THIS IS THE FIX) ---
+    execute_queries_input_state = {"sql_queries": sql_queries_result["sql_queries"]}
+    # You must CALL the function with `()` and pass the input state.
+    query_results_result = await parallel_execute_queries_node(execute_queries_input_state)
+
+    # --- Reformat the results for the final composer node ---
+    combined_data = {}
+    for task_key, json_str_result in query_results_result["query_results"].items():
+        try:
+            metric_name = task_key.split(" - ", 1)[1]
+            data = json.loads(json_str_result)
+            if data and isinstance(data, list) and data[0] is not None:
+                metric_value = list(data[0].values())[0]
+                combined_data[metric_name] = metric_value
+            else:
+                combined_data[metric_name] = "N/A"
+        except (json.JSONDecodeError, IndexError, KeyError, TypeError):
+            combined_data[metric_name] = "Error parsing result"
+            
+    # Package the combined data under the entity name for the composer
+    # The final composer expects a dictionary of JSON strings
+    final_query_results = {entity_name: json.dumps([combined_data])}
+    
+    return {"query_results": final_query_results}
 
 # --- FINAL FIX: Replace the entire execute_health_checklist_node function with this one ---
 async def execute_health_checklist_node(state: FundamentalsAgentState) -> Dict:
@@ -565,23 +633,32 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
     """
     Decides the path after the initial query extraction.
     - If it's a health check, go to the hard-coded tool.
+    - If multi-metric -> multi_metric_path (NEW)
     - If DB is not needed, go straight to the answer.
     - Otherwise, go to the RAG path.
     """
     if state.get("error_message"):
         return "end"
     
-    if state["extraction"].is_health_checklist_query:
+    # --- THIS IS THE CRITICAL FIX ---
+    # Correctly access the extraction result from the state dictionary.
+    extraction = state["extraction"]
+
+    if extraction.is_health_checklist_query:
         print("Routing to: Health Checklist Tool")
         return "health_check_path"
+    
+    if extraction.is_multi_metric_query:
+        print("Routing to: Multi-Metric Parallel Path")
+        return "multi_metric_path"
 
-    if state["extraction"].is_database_required:
+    if extraction.is_database_required:
         print("Routing to: RAG Path for Specific Metrics")
         return "rag_path"
     else:
         print("Routing to: General Path (No DB required)")
         return "general_path"
-        
+
 graph_builder = StateGraph(FundamentalsAgentState)
 
 # Add all nodes, including our new one
@@ -594,6 +671,8 @@ graph_builder.add_node("execute_health_checklist", execute_health_checklist_node
 graph_builder.add_node("get_price_history", get_price_history_for_chart_node)
 graph_builder.add_node("compose_answer", compose_final_answer_node)
 
+graph_builder.add_node("execute_multi_metric", execute_multi_metric_node)
+
 graph_builder.set_entry_point("extract")
 
 graph_builder.add_conditional_edges(
@@ -601,6 +680,7 @@ graph_builder.add_conditional_edges(
     route_after_extraction,
     {
         "health_check_path": "execute_health_checklist", # Route to health check first
+        "multi_metric_path": "execute_multi_metric", 
         "rag_path": "generalize_and_rag", 
         "general_path": "compose_answer", 
         "end": END
@@ -610,6 +690,9 @@ graph_builder.add_conditional_edges(
 # --- MODIFIED EDGES FOR THE HEALTH CHECK PATH ---
 # After fetching health metrics, now fetch the price history for the chart
 graph_builder.add_edge("execute_health_checklist", "get_price_history")
+
+graph_builder.add_edge("execute_multi_metric", "compose_answer")
+
 # After fetching chart data, compose the final structured answer
 graph_builder.add_edge("get_price_history", "compose_answer")
 
@@ -630,7 +713,8 @@ app = graph_builder.compile()
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
-            "Is Reliance strong based on Fundamental Analysis?",
+            "What are the market capitalization, current price, high/low, dividend yield, P/E ratio, book value, return on capital employed (ROCE), and return on equity (ROE) of Reliance Industries?"
+            # "Is Reliance strong based on Fundamental Analysis?",
             # "What is the market cap of Reliance Industries and the latest sales for ABB India?",
             # "What is the business description of Ambalal Sarabhai?",
             # "What are the top 5 companies by market cap?",
