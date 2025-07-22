@@ -4,6 +4,7 @@ import mysql.connector
 from mysql.connector import Error, pooling
 import os
 from dotenv import load_dotenv
+from typing import Tuple, Optional
 
 load_dotenv()
 
@@ -114,7 +115,7 @@ def get_user_sessions(user_id: int) -> list:
     cursor = cnx.cursor(dictionary=True)
     try:
         query = """
-            SELECT id, langgraph_thread_id as thread_id, started_at
+            SELECT id, langgraph_thread_id as thread_id, started_at,summary
             FROM sessions
             WHERE user_id = %s
             ORDER BY started_at DESC
@@ -205,3 +206,39 @@ def get_messages_by_thread_id(thread_id: str) -> list:
     finally:
         cursor.close()
         cnx.close()
+
+
+# --- NEW FUNCTION FOR SESSION SUMMARIZATION ---
+def update_session_summary(session_id: int, summary: str):
+    """Updates the summary for a given session."""
+    cnx = get_db_connection()
+    cursor = cnx.cursor()
+    try:
+        query = "UPDATE sessions SET summary = %s WHERE id = %s"
+        cursor.execute(query, (summary, session_id))
+        cnx.commit()
+    finally:
+        cursor.close()
+        cnx.close()
+
+def get_session_and_user_ids_by_thread(thread_id: str) -> Optional[Tuple[int, int]]:
+    """Fetches user_id and session_id based on the langgraph_thread_id."""
+    cnx = get_db_connection()
+    cursor = cnx.cursor()
+    try:
+        # We join to get the user_id from the parent table
+        query = """
+            SELECT s.id, s.user_id
+            FROM sessions s
+            WHERE s.langgraph_thread_id = %s
+        """
+        cursor.execute(query, (thread_id,))
+        result = cursor.fetchone()
+        if result:
+            session_id, user_id = result
+            return session_id, user_id
+        return None
+    finally:
+        cursor.close()
+        cnx.close()
+

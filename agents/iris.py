@@ -21,6 +21,7 @@ from .fundamentals_agent import app as fundamentals_app_instance
 from .sentiment_agent import app as sentiment_app_instance
 from .technicals_agent import app as technical_app_instance
 from . import db_ltm
+from .db_ltm import update_session_summary
 
 load_dotenv()
 
@@ -59,158 +60,178 @@ class IrisState(TypedDict):
 # --- Prompts ---
 # (keep SUPERVISOR_PROMPT_TEMPLATE and others)
 
-LTM_UPDATE_PROMPT_TEMPLATE = """You are an AI assistant that specializes in intelligently updating a user's profile preferences based on new information.
+LTM_UPDATE_PROMPT_TEMPLATE = """
+    You are an AI assistant that specializes in intelligently updating a user's profile preferences based on new information.
 
-**Your Task:**
-Analyze the user's new request and update the JSON of their current preferences. Your output must be a single JSON object containing the *complete, final, and updated set of all preferences*.
+    **Your Task:**
+    Analyze the user's new request and update the JSON of their current preferences. Your output must be a single JSON object containing the *complete, final, and updated set of all preferences*.
 
-**Current Preferences (as JSON):**
-{existing_preferences}
+    **Current Preferences (as JSON):**
+    {existing_preferences}
 
-**User's New Request:**
-"{user_input}"
+    **User's New Request:**
+    "{user_input}"
 
-**--- Rules for Updating ---**
-1.  **Overwrite:** If the user provides a new, single value for an existing key (e.g., changes their favorite stock), overwrite the old value.
-2.  **Merge & Append:** If the user provides additional items for a key that could be a list (like 'fav_indicator'), merge the new items with any existing ones. Create a list if the key previously held a single value. Ensure there are no duplicates in the final list.
-3.  **Add New:** If the user provides a completely new preference, add it as a new key-value pair.
-4.  **Infer Keys:** Use clear, consistent keys like 'fav_stock', 'investment_style', 'fav_indicator'.
-5.  **Output:** Your entire output must be ONLY the final, complete JSON object of facts to save.
+    **--- Rules for Updating ---**
+    1.  **Overwrite:** If the user provides a new, single value for an existing key (e.g., changes their favorite stock), overwrite the old value.
+    2.  **Merge & Append:** If the user provides additional items for a key that could be a list (like 'fav_indicator'), merge the new items with any existing ones. Create a list if the key previously held a single value. Ensure there are no duplicates in the final list.
+    3.  **Add New:** If the user provides a completely new preference, add it as a new key-value pair.
+    4.  **Infer Keys:** Use clear, consistent keys like 'fav_stock', 'investment_style', 'fav_indicator'.
+    5.  **Output:** Your entire output must be ONLY the final, complete JSON object of facts to save.
 
-**Example 1: Overwrite**
-- Current Preferences: {{"fav_stock": "Reliance"}}
-- User Request: "My fav stock is ABB India"
-- Your Output JSON: {{"fav_stock": "ABB India"}}
+    **Example 1: Overwrite**
+    - Current Preferences: {{"fav_stock": "Reliance"}}
+    - User Request: "My fav stock is ABB India"
+    - Your Output JSON: {{"fav_stock": "ABB India"}}
 
-**Example 2: Append to List**
-- Current Preferences: {{"fav_indicator": ["RSI"]}}
-- User Request: "I also love EMA and MACD"
-- Your Output JSON: {{"fav_indicator": ["RSI", "EMA", "MACD"]}}
+    **Example 2: Append to List**
+    - Current Preferences: {{"fav_indicator": ["RSI"]}}
+    - User Request: "I also love EMA and MACD"
+    - Your Output JSON: {{"fav_indicator": ["RSI", "EMA", "MACD"]}}
 
-**Example 3: Create List from String**
-- Current Preferences: {{"fav_indicator": "RSI"}}
-- User Request: "I also like MACD"
-- Your Output JSON: {{"fav_indicator": ["RSI", "MACD"]}}
+    **Example 3: Create List from String**
+    - Current Preferences: {{"fav_indicator": "RSI"}}
+    - User Request: "I also like MACD"
+    - Your Output JSON: {{"fav_indicator": ["RSI", "MACD"]}}
 
-Now, based on the provided preferences and the new request, generate the final JSON object.
+    Now, based on the provided preferences and the new request, generate the final JSON object.
 """
 
-
-# In iris.py
 SUPERVISOR_PROMPT_TEMPLATE = """
-You are IRIS, a master AI supervisor. Your job is to analyze the user's raw query and conversation history to determine their true INTENT and route them to the correct tool. You must be extremely precise.
+    You are IRIS, a master AI supervisor. Your job is to analyze the user's raw query and conversation history to determine their true INTENT and route them to the correct tool. You must be extremely precise.
 
-**--- Conversation History (for context) ---**
-{chat_history}
-- **User's Current Raw Query:** "{user_input}"
+    **--- Conversation History (for context) ---**
+    {chat_history}
+    - **User's Current Raw Query:** "{user_input}"
 
-**--- YOUR THOUGHT PROCESS (You MUST follow this logic): ---**
+    **--- YOUR THOUGHT PROCESS (You MUST follow this logic): ---**
 
-1.  **Long-Term Memory (LTM) Check - HIGHEST PRIORITY:**
-    - Is the user **TELLING ME** a preference to remember? (e.g., "My favorite stock is...", "I prefer...", "My investment style is..."). If YES, route to **`save_ltm`**.
-    - Is the user **ASKING ME** about a preference I should already know? (e.g., "What is my favorite stock?", "Which indicators do I like?"). If YES, route to **`load_ltm`**.
+    1.  **Long-Term Memory (LTM) Check - HIGHEST PRIORITY:**
+        - Is the user **TELLING ME** a preference to remember? (e.g., "My favorite stock is...", "I prefer...", "My investment style is..."). If YES, route to **`save_ltm`**.
+        - Is the user **ASKING ME** about a preference I should already know? (e.g., "What is my favorite stock?", "Which indicators do I like?"). If YES, route to **`load_ltm`**.
 
-2.  **Contextual Follow-up Check:**
-    - Does the query refer to a previous turn (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
-    - If YES, identify the topic from the history (e.g., "Financial Performance of Reliance") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`). This is a critical task.
+    2.  **Contextual Follow-up Check:**
+        - Does the query refer to a previous turn (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
+        - If YES, identify the topic from the history (e.g., "Financial Performance of Reliance") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`). This is a critical task.
 
-3.  **Vague Query Check:**
-    - Is the query just a company name (e.g., "Reliance", "Infosys")? If YES, route to **`clarification`**.
+    3.  **Vague Query Check:**
+        - Is the query just a company name (e.g., "Reliance", "Infosys")? If YES, route to **`clarification`**.
 
-4.  **Broad Opinion Check:**
-    - Is the user asking for a broad opinion (e.g., "Should I buy/sell/hold...?", "Is it a good buy?") without specifying a method? If YES, route to **`cross_agent_reasoning`**.
+    4.  **Broad Opinion Check:**
+        - Is the user asking for a broad opinion (e.g., "Should I buy/sell/hold...?", "Is it a good buy?") without specifying a method? If YES, route to **`cross_agent_reasoning`**.
 
-5.  **Specific Fact Check:**
-    - Is the user asking for a specific technical fact (RSI, MACD)? Route to **`technicals`**.
-    - Is the user asking for a specific fundamental fact (P/E, market cap)? Route to **`fundamentals`**.
-    - Is the user asking about news or public mood? Route to **`sentiment`**.
+    5.  **Specific Fact Check:**
+        - Is the user asking for a specific technical fact (RSI, MACD)? Route to **`technicals`**.
+        - Is the user asking for a specific fundamental fact (P/E, market cap)? Route to **`fundamentals`**.
+        - Is the user asking about news or public mood? Route to **`sentiment`**.
 
-6.  **Catch-Alls:**
-    - Is it a simple greeting or closing? Route to **`general`**.
-    - Is it about something other than finance? Route to **`out_of_domain`**.
+    6.  **Catch-Alls:**
+        - Is it a simple greeting or closing? Route to **`general`**.
+        - Is it about something other than finance? Route to **`out_of_domain`**.
 
----
-Now, apply this thought process to the user's raw query and provide your output as a single, valid JSON object.
+    ---
+    Now, apply this thought process to the user's raw query and provide your output as a single, valid JSON object.
 """
 
-# --- FIX: New prompt for rewriting questions to be self-contained. This logic now lives in IRIS. ---
-# In iris.py, replace the REWRITE_QUESTION_PROMPT
+REWRITE_QUESTION_PROMPT = """
+    You are an expert at creating self-contained, standalone queries for another AI.
+    Your task is to analyze the user's latest input and the recent conversation history, then rewrite the user's input into a complete query that can be understood without any of the previous context.
 
-REWRITE_QUESTION_PROMPT = """You are an expert at creating self-contained, standalone queries for another AI.
-Your task is to analyze the user's latest input and the recent conversation history, then rewrite the user's input into a complete query that can be understood without any of the previous context.
+    **Strict Rules:**
+    1.  **Resolve Context for Follow-ups:** ONLY if the user's input is a clear follow-up (e.g., "the first option", "what about them?", "tell me more"), use the history to resolve pronouns and references.
+    2.  **DO NOT Add Context to New Topics:** If the user's input introduces a new, specific subject (e.g., "What are the top 5 companies by market cap?", "How is Tata Motors doing?"), you MUST assume it is a new, unrelated query. DO NOT inject context from the previous conversation into it.
+    3.  **Preserve Intent:** If the original input is a question, the output must be a question. If it's a statement/command, the output must be a statement/command.
+    4.  **Be Concise:** Your entire output must be ONLY the final, rewritten query. Do not add any extra text or explanations.
+    5.  **No-Op:** If the user's input is already a complete, standalone query, return it EXACTLY AS IS.
 
-**Strict Rules:**
-1.  **Resolve Context for Follow-ups:** ONLY if the user's input is a clear follow-up (e.g., "the first option", "what about them?", "tell me more"), use the history to resolve pronouns and references.
-2.  **DO NOT Add Context to New Topics:** If the user's input introduces a new, specific subject (e.g., "What are the top 5 companies by market cap?", "How is Tata Motors doing?"), you MUST assume it is a new, unrelated query. DO NOT inject context from the previous conversation into it.
-3.  **Preserve Intent:** If the original input is a question, the output must be a question. If it's a statement/command, the output must be a statement/command.
-4.  **Be Concise:** Your entire output must be ONLY the final, rewritten query. Do not add any extra text or explanations.
-5.  **No-Op:** If the user's input is already a complete, standalone query, return it EXACTLY AS IS.
+    **--- Example of a Follow-up (Rule 1) ---**
+    **Chat History:**
+    assistant: To provide analysis of Reliance Industries, we need more info...
+    - **Financial Performance:** Stock price, revenue, and profit margins.
+    **User Input:**
+    I wanna know the First option
+    **Rewritten, Self-Contained User Input:**
+    What is the financial performance of Reliance Industries?
 
-**--- Example of a Follow-up (Rule 1) ---**
-**Chat History:**
-assistant: To provide analysis of Reliance Industries, we need more info...
-- **Financial Performance:** Stock price, revenue, and profit margins.
-**User Input:**
-I wanna know the First option
-**Rewritten, Self-Contained User Input:**
-What is the financial performance of Reliance Industries?
+    **--- Example of a New Topic (Rule 2) ---**
+    **Chat History:**
+    assistant: The analysis for Reliance Industries is complete.
+    **User Input:**
+    What are the top 5 companies by market capitalization?
+    **Rewritten, Self-Contained User Input:**
+    What are the top 5 companies by market capitalization?
+    **--- End Examples ---**
 
-**--- Example of a New Topic (Rule 2) ---**
-**Chat History:**
-assistant: The analysis for Reliance Industries is complete.
-**User Input:**
-What are the top 5 companies by market capitalization?
-**Rewritten, Self-Contained User Input:**
-What are the top 5 companies by market capitalization?
-**--- End Examples ---**
+    Now, perform this task on the following inputs.
 
-Now, perform this task on the following inputs.
+    **Chat History:**
+    {chat_history}
 
-**Chat History:**
-{chat_history}
+    **User Input:**
+    {question}
 
-**User Input:**
-{question}
-
-**Rewritten, Self-Contained User Input:**
+    **Rewritten, Self-Contained User Input:**
 """
 
-
-
-SYNTHESIS_PROMPT_TEMPLATE = """You are IRIS, a sharp and confident financial analyst AI. Your task is to synthesize reports into a single, direct, and easy-to-understand response.
-**User's Query:** "{user_input}"
-**--- Analyst Reports ---**
-- **Fundamental Analysis:** {fundamentals}
-- **Technical Analysis:** {technicals}
-- **Sentiment Analysis:** {sentiment}
-**--- Instructions ---**
-1. Summarize each finding. If an analyst reported an error, state that plainly.
-2. Conclude with a direct opinion (buy/sell/hold).
-3. **Formatting:** Use full company names, 'crores'/'lakhs'. No intros or disclaimers.
-Begin your synthesized response now.
-"""
-LTM_RESPONSE_PROMPT = """You are IRIS. You have retrieved the user's saved preferences. Answer their question based on this information and the conversation history.
-**Conversation History:**
-{chat_history}
-**User's Saved Preferences:**
-{ltm_data}
-**User's Question:**
-{user_input}
-Answer the question naturally and directly.
-"""
-CLARIFICATION_PROMPT_TEMPLATE = """You are IRIS, a helpful financial assistant. A user has provided a vague query. Your goal is to ask a smart, clarifying question to better understand their intent. Offer them concrete options.
-**User's Vague Query:** "{user_input}"
-Generate a suitable clarifying question, starting directly.
-"""
-GENERAL_PROMPT_TEMPLATE = """You are IRIS, a friendly and professional financial assistant. The user has said something general (like a greeting or a simple question about you). Respond naturally and conversationally. Keep it brief.
-**Chat History (for context):**
-{chat_history}
-**User's Message:** "{user_input}"
-Your response:
+SYNTHESIS_PROMPT_TEMPLATE = """
+    You are IRIS, a sharp and confident financial analyst AI. Your task is to synthesize reports into a single, direct, and easy-to-understand response.
+    **User's Query:** "{user_input}"
+    **--- Analyst Reports ---**
+    - **Fundamental Analysis:** {fundamentals}
+    - **Technical Analysis:** {technicals}
+    - **Sentiment Analysis:** {sentiment}
+    **--- Instructions ---**
+    1. Summarize each finding. If an analyst reported an error, state that plainly.
+    2. Conclude with a direct opinion (buy/sell/hold).
+    3. **Formatting:** Use full company names, 'crores'/'lakhs'. No intros or disclaimers.
+    Begin your synthesized response now.
 """
 
+LTM_RESPONSE_PROMPT = """
+    You are IRIS. You have retrieved the user's saved preferences. Answer their question based on this information and the conversation history.
+    **Conversation History:**
+    {chat_history}
+    **User's Saved Preferences:**
+    {ltm_data}
+    **User's Question:**
+    {user_input}
+    Answer the question naturally and directly.
+"""
 
-# FINAL_FORMATTING_PROMPT_TEMPLATE = 
+CLARIFICATION_PROMPT_TEMPLATE = """
+    You are IRIS, a helpful financial assistant. A user has provided a vague query. Your goal is to ask a smart, clarifying question to better understand their intent. Offer them concrete options.
+    **User's Vague Query:** "{user_input}"
+    Generate a suitable clarifying question, starting directly.
+"""
+
+GENERAL_PROMPT_TEMPLATE = """
+    You are IRIS, a friendly and professional financial assistant. The user has said something general (like a greeting or a simple question about you). Respond naturally and conversationally. Keep it brief.
+    **Chat History (for context):**
+    {chat_history}
+    **User's Message:** "{user_input}"
+    Your response:
+"""
+
+SESSION_SUMMARY_PROMPT_TEMPLATE = """
+    You are an expert at summarizing conversation histories into a short, descriptive title for a UI sidebar.
+
+    **Conversation History:**
+    {chat_history}
+
+    **Your Task:**
+    Based on the full conversation, generate a single, concise title (max 5-7 words) that captures the main topic or key entity discussed. Your entire output should be ONLY the title itself.
+
+    **Example 1:**
+    - History: "User: hi, Assistant: hello, User: what is the P/E of Reliance?, Assistant: The P/E is 24.5"
+    - Your Output: "Analysis of Reliance P/E Ratio"
+
+    **Example 2:**
+    - History: "User: my fav stock is INFY, Assistant: Got it."
+    - Your Output: "User Preference: Favorite Stock"
+
+    Now, generate the title for the provided history.
+"""
+
 
 # --- Helper Function for Rewriting Question ---
 async def _get_standalone_question(state: IrisState) -> str:
@@ -232,6 +253,28 @@ class IrisOrchestrator:
         self.graph = self._build_graph()
         self.app = self.graph.compile(checkpointer=self.checkpointer)
 
+    def should_i_summarize(self, state: IrisState) -> str:
+        """Checks if the conversation is at a point where it should be summarized."""
+        # A "turn" consists of 2 messages (user + assistant)
+        num_messages = len(state.get("full_chat_history", []))
+        
+        # Don't summarize if there's no history yet
+        if num_messages < 2:
+            return "end"
+
+        num_turns = num_messages // 2
+        
+        SUMMARY_INTERVAL = 3 
+
+        # Summarize on the 1st turn, then on the 4th, 7th, 10th etc.
+        # This condition captures the initial summary and periodic updates.
+        if num_turns > 0 and (num_turns == 1 or (num_turns - 1) % SUMMARY_INTERVAL == 0):
+            print(f"--- ROUTING: Turn {num_turns}. Condition met. Routing to summarizer. ---")
+            return "summarize"
+        else:
+            print(f"--- ROUTING: Turn {num_turns}. Skipping summarizer. ---")
+            return "end"
+
     def _build_graph(self) -> StateGraph:
         graph_builder = StateGraph(IrisState)
         
@@ -251,8 +294,8 @@ class IrisOrchestrator:
         graph_builder.add_node("synthesize_results", self.synthesize_results_node)
         graph_builder.add_node("format_and_stream", self.format_and_stream_node)
         graph_builder.add_node("log_to_db_and_finalize", self.log_to_db_and_finalize_node)
+        graph_builder.add_node("summarize_session", self.summarize_session_node)
         
-        # --- Define Graph Edges (This logic is NEW and REPLACES the old edge definitions) ---
         
         # Entry point and supervisor routing are the same
         graph_builder.set_entry_point("initialize_session")
@@ -319,18 +362,64 @@ class IrisOrchestrator:
         
         # The output of the formatter ALWAYS goes to the logger
         graph_builder.add_edge("format_and_stream", "log_to_db_and_finalize")
+
+        # --- MODIFIED FINAL EDGES FOR SUMMARIZATION ---
+        # The logging node now routes to our conditional check
+        graph_builder.add_conditional_edges(
+            "log_to_db_and_finalize",
+            self.should_i_summarize,
+            {
+                "summarize": "summarize_session",
+                "end": END,
+            }
+        )
         
         # The final step is always logging, which then ends the graph
-        graph_builder.add_edge("log_to_db_and_finalize", END)
+        graph_builder.add_edge("summarize_session", END)
 
         return graph_builder
 
     async def initialize_session_node(self, state: IrisState) -> Dict:
-        if state.get("db_user_id"): return {}
-        user_identifier, thread_id = state["user_identifier"], state["thread_id"]
-        db_user_id = await asyncio.to_thread(db_ltm.get_or_create_user, user_identifier)
-        db_session_id = await asyncio.to_thread(db_ltm.get_or_create_session, db_user_id, thread_id)
-        return {"db_user_id": db_user_id, "db_session_id": db_session_id, "full_chat_history": []}
+        """
+        This node is now robust. It ensures user and session IDs are present
+        in the state on EVERY turn, fetching them from the DB if necessary.
+        This is the definitive fix for the state loss issue.
+        """
+        print("\n---NODE: Initialize or Verify Session---")
+        thread_id = state["thread_id"]
+        user_identifier = state["user_identifier"]
+
+        # On every turn, try to fetch existing session details from DB using thread_id
+        existing_ids = await asyncio.to_thread(db_ltm.get_session_and_user_ids_by_thread, thread_id)
+
+        if existing_ids:
+            # Session already exists in the database.
+            db_session_id, db_user_id = existing_ids
+            print(f"--- Session verified. UserID: {db_user_id}, SessionID: {db_session_id} ---")
+            
+            # We return the IDs to ensure they are correctly set in the state for this turn,
+            # overwriting any potentially corrupted (None) values from a previous turn's state.
+            # We do NOT touch full_chat_history, allowing the accumulator to work.
+            return {
+                "db_user_id": db_user_id,
+                "db_session_id": db_session_id,
+            }
+        else:
+            # This is the very first turn for this thread_id.
+            # Create the user and session records.
+            print(f"--- First turn for thread {thread_id}. Creating new session in DB. ---")
+            db_user_id = await asyncio.to_thread(db_ltm.get_or_create_user, user_identifier)
+            db_session_id = await asyncio.to_thread(db_ltm.get_or_create_session, db_user_id, thread_id)
+            
+            print(f"--- New session created. UserID: {db_user_id}, SessionID: {db_session_id} ---")
+
+            # On the first turn, we must initialize the history list
+            # and populate the state with the newly created IDs.
+            return {
+                "db_user_id": db_user_id,
+                "db_session_id": db_session_id,
+                "full_chat_history": []
+            }
 
     async def supervisor_decide_node(self, state: IrisState) -> Dict:
         print("---NODE: Supervisor Decide---")
@@ -366,9 +455,6 @@ class IrisOrchestrator:
         else:
             print("Question is already self-contained.")
             return {}
-
-
-
 
     async def save_ltm_node(self, state: IrisState) -> Dict:
         print("---NODE: Save LTM (Read-Update-Write)---")
@@ -436,7 +522,6 @@ class IrisOrchestrator:
             traceback.print_exc()
             return {"final_response": f"Sorry, I had trouble retrieving your preferences. Error: {e}"}
 
-
     async def call_agent_node(self, state: IrisState) -> Dict:
         # Rewrite the question to be self-contained (this part is correct)
         standalone_question = state["user_input"]
@@ -503,8 +588,7 @@ class IrisOrchestrator:
             "I am IRIS, an AI financial analyst. I can only answer questions related to the stock market and financial data."
         ]
         if response_from_agent in simple_responses or "Sorry, I had trouble" in response_from_agent:
-             yield {"final_response": response_from_agent}
-             return
+             return {"final_response": response_from_agent}
         
         formatting_prompt = PromptTemplate.from_template(
        """
@@ -556,47 +640,57 @@ class IrisOrchestrator:
 
         formatter_chain = formatting_prompt | groq_llm
 
-        final_answer_stream = formatter_chain.astream(
-            {"raw_answer": response_from_agent,
-                "user_question": user_question},
-            config={"run_name": "final_user_output_stream"}
+        formatted_response = await formatter_chain.ainvoke(
+            {"raw_answer": response_from_agent, "user_question": user_question},
+            config={"run_name": "final_user_output_formatter"}
         )
 
-        # --- THIS IS THE CRUCIAL FIX ---
-        # We need to accumulate the full response *inside* this node
-        # and return it at the end to properly update the graph's state.
-        full_formatted_response = ""
-        async for chunk in final_answer_stream:
-            # 1. Yield the chunk for the frontend to stream
-            yield {"final_response": chunk.content}
-            # 2. Accumulate the chunk to build the full response
-            full_formatted_response += chunk.content
+       
 
         # 3. After the stream is complete, return the final, accumulated
         #    response. This correctly updates the state for the next node.
-        yield {"final_response": full_formatted_response}
+        return {"final_response": formatted_response.content}
 
     async def log_to_db_and_finalize_node(self, state: IrisState) -> Dict:
-        user_input = state.get("original_user_input", state["user_input"])
-        final_response_obj = state.get("final_response") or "I'm sorry, I cannot respond."
-        
-        # --- NEW: Handle both string and dict responses ---
-        if isinstance(final_response_obj, dict):
-            # It's our structured response with UI components
-            assistant_response_for_log = final_response_obj.get("text_response", "Response generated.")
-        else:
-            # It's a simple string response
-            assistant_response_for_log = str(final_response_obj)
-            
-        await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "user", user_input)
-        await asyncio.to_thread(db_ltm.log_chat_message, state["db_session_id"], "assistant", assistant_response_for_log)
-        
-        new_history = state["full_chat_history"] + [HumanMessage(content=user_input), AIMessage(content=assistant_response_for_log)]
-        
-        print(f"Final Response Object being sent to API:\n{final_response_obj}")
+            """
+            Logs the conversation to the database and prepares the final state.
+            This node is now correctly implemented to avoid wiping state keys.
+            """
+            print("---NODE: Log to DB and Finalize---")
+            user_input = state.get("original_user_input", state["user_input"])
+            final_response_obj = state.get("final_response") or "I'm sorry, I cannot respond."
 
-        # Return the full object (dict or str) for the API, and update history
-        return {"final_response": final_response_obj, "full_chat_history": new_history, "original_user_input": None}
+            # Handle both string and dict responses for logging
+            if isinstance(final_response_obj, dict):
+                assistant_response_for_log = final_response_obj.get("text_response", "Structured response generated.")
+            else:
+                assistant_response_for_log = str(final_response_obj)
+
+            # The DB logging calls are correct. The issue is what this node returns.
+            session_id = state.get("db_session_id")
+            if not session_id:
+                print("--- CRITICAL ERROR: db_session_id is missing in log_to_db_and_finalize_node. ---")
+                # You might want to handle this more gracefully, but for now, we'll log it.
+                # This check helps confirm the fix.
+                return {"final_response": "A critical session error occurred. Please start a new chat."}
+
+            await asyncio.to_thread(db_ltm.log_chat_message, session_id, "user", user_input)
+            await asyncio.to_thread(db_ltm.log_chat_message, session_id, "assistant", assistant_response_for_log)
+
+            # --- FIX ---
+            # 1. Use the `Annotated` accumulator correctly by only returning the NEW messages.
+            #    LangGraph will automatically append them to the existing `full_chat_history`.
+            new_messages = [HumanMessage(content=user_input), AIMessage(content=assistant_response_for_log)]
+
+            print(f"Final Response Object being sent to API:\n{final_response_obj}")
+
+            # 2. Return a dictionary of ONLY the keys you want to update.
+            #    LangGraph preserves all other keys (like db_session_id) in the state.
+            return {
+                "final_response": final_response_obj,
+                "full_chat_history": new_messages, # Let the accumulator do the append
+                "original_user_input": None        # Clear the original input for the next turn
+            }
 
     async def staggered_parallel_agent_call_node(self, state: IrisState) -> Dict:
         # Rewrite the question ONCE (this part is correct)
@@ -647,6 +741,35 @@ class IrisOrchestrator:
 
         return {"sub_agent_outputs": sub_agent_outputs}
 
+    async def summarize_session_node(self, state: IrisState) -> Dict:
+        """
+        As a final, non-blocking step, summarizes the conversation and saves
+        it to the database for display in the UI.
+        """
+        print("---NODE: Summarize Session---")
+        try:
+            # Prepare the prompt using the *complete* chat history
+            history_str = "\n".join([f"{m.type}: {m.content}" for m in state['full_chat_history']])
+            prompt = SESSION_SUMMARY_PROMPT_TEMPLATE.format(chat_history=history_str)
+
+            # Get summary from a fast LLM
+            response = await groq_llm_fast.ainvoke(prompt)
+            summary_text = response.content.strip().strip('"')
+
+            # Update the database in the background
+            await asyncio.to_thread(
+                update_session_summary,
+                state["db_session_id"],
+                summary_text
+            )
+            print(f"Updated session summary to: '{summary_text}'")
+        except Exception as e:
+            # We don't want to crash the whole flow if summarization fails
+            print(f"--- ERROR in summarize_session_node: {e} ---")
+            traceback.print_exc()
+        
+        # This node doesn't modify the state, it's a "fire-and-forget" side effect
+        return {}
 
     async def ainvoke(self, payload: dict, config: dict) -> Dict:
         return await self.app.ainvoke(payload, config)

@@ -78,49 +78,50 @@ class FundamentalsAgentState(TypedDict):
 
 # This "Golden Schema" is a permanent guide for the LLM, reducing hallucination.
 GOLDEN_SCHEMA_CONTEXT = """
-/*
--- Golden Schema & High-Level Database Guide (v2) --
+    /*
+    -- Golden Schema & High-Level Database Guide (v2) --
 
-1.  **Core Company Information Table:**
-    -   Table: `company_master`
-    -   Key Columns: `fincode` (Primary Key), `compname`, `scripcode`, `industry`.
+    1.  **Core Company Information Table:**
+        -   Table: `company_master`
+        -   Key Columns: `fincode` (Primary Key), `compname`, `scripcode`, `industry`.
 
-2.  **Date Column Rules (MANDATORY):**
-    -   Use `year_end` for annual financial data in: `company_equity`, `company_finance_profitloss`, `company_finance_ratio`.
-    -   Use `date_end` for quarterly/periodic data in: `company_results`, `company_shareholding_pattern`.
-    -   Use `date` for daily price data in: `bse_abjusted_price_eod`.
+    2.  **Date Column Rules (MANDATORY):**
+        -   Use `year_end` for annual financial data in: `company_equity`, `company_finance_profitloss`, `company_finance_ratio`, `company_finance_cashflow`, `company_finance_cashflow_cons`.
+        -   Use `date_end` for quarterly/periodic data in: `company_results`, `company_shareholding_pattern`.
+        -   Use `date` for daily price data in: `bse_abjusted_price_eod`.
 
-3.  **Key Data Points Mapping (CRITICAL - Use this to find the correct table for a metric):**
+    3.  **Key Data Points Mapping (CRITICAL - Use this to find the correct table for a metric):**
 
-    **Valuation & Size:**
-    - Market Cap (`mcap`): in `company_equity`
-    - Enterprise Value (`ev`): in `company_equity`
-    - P/E Ratio (`ttmpe`): in `company_equity`
-    - Price to Book Value (`price_bv`): in `company_equity`
-    - Price to Sales (`price_sales`): in `company_equity`
-    - EV to EBITDA (`ev_ebitda`): in `company_equity`
-    - Dividend Yield (`dividend_yield`): in `company_equity`
+        **Valuation & Size:**
+        - Market Cap (`mcap`): in `company_equity`
+        - Enterprise Value (`ev`): in `company_equity`
+        - P/E Ratio (`ttmpe`): in `company_equity`
+        - Price to Book Value (`price_bv`): in `company_equity`
+        - Price to Sales (`price_sales`): in `company_equity`
+        - EV to EBITDA (`ev_ebitda`): in `company_equity`
+        - Dividend Yield (`dividend_yield`): in `company_equity`
 
-    **Profitability & Performance:**
-    - Net Sales / Revenue (`net_sales`): in `company_finance_profitloss`
-    - Total Income (`total_income`): in `company_finance_profitloss`
-    - Operating Profit (`operating_profit`): in `company_finance_profitloss`
-    - Net Profit / Profit After Tax (`profit_after_tax`): in `company_finance_profitloss`
-    - Earnings Per Share / EPS (`ttmeps`): in `company_equity`
+        **Profitability & Performance:**
+        - Net Sales / Revenue (`net_sales`): in `company_finance_profitloss`
+        - Total Income (`total_income`): in `company_finance_profitloss`
+        - Operating Profit (`operating_profit`): in `company_finance_profitloss`
+        - Net Profit / Profit After Tax (`profit_after_tax`): in `company_finance_profitloss`
+        - Earnings Per Share / EPS (`ttmeps`): in `company_equity`
 
-    **Ownership:**
-    - Promoter Shareholding (`tp_f_total_promoter`): in `company_shareholding_pattern`
+        **Ownership:**
+        - Promoter Shareholding (`tp_f_total_promoter`): in `company_shareholding_pattern`
 
-    **Book Value & Other:**
-    - Book Value per Share (`booknavpershare`): in `company_equity`
-    - Face Value (`fv`): in `company_equity`
+        **Book Value & Other:**
+        - Book Value per Share (`booknavpershare`): in `company_equity`
+        - Face Value (`fv`): in `company_equity`
 
-4.  **Daily Pricing Data:**
-    - For `open`, `high`, `low`, `close`, `volume`, you MUST use the `bse_abjusted_price_eod` table.
+    4.  **Daily Pricing Data:**
+        - For `open`, `high`, `low`, `close`, `volume`, you MUST use the `bse_abjusted_price_eod` table.
 
-*/
+    5. **JOIN:**
+        - Alwats use `fincode` column to join any tables.
+    */
 """
-
 
 # --- FIX: Incorporate Health Checklist identification into your original prompt ---
 EXTRACT_PROMPT = """
@@ -179,82 +180,79 @@ GENERALIZE_TASK_PROMPT = """
 """
 
 
-
 # --- FINAL FIX: Incorporating the strict Golden Schema rule into your existing prompt ---
 WRITE_QUERY_PROMPT = """
-You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query. You must follow a strict thought process.
+    You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query. You must follow a strict thought process.
 
---- SCHEMA CONTEXT ---
--- **PRIMARY SOURCE OF TRUTH: Golden Schema** --
--- This schema is ALWAYS correct. I will use it to determine which table contains a specific metric and what the correct date column is for that table.
-{golden_schema}
+    --- SCHEMA CONTEXT ---
+    -- **PRIMARY SOURCE OF TRUTH: Golden Schema** --
+    -- This schema is ALWAYS correct. I will use it to determine which table contains a specific metric and what the correct date column is for that table.
+    {golden_schema}
 
--- **SECONDARY SOURCE: Dynamic RAG Schema** --
--- This provides additional context. I will use it for column names, but if it conflicts with the Golden Schema, I will IGNORE the RAG context and trust the Golden Schema.
-{rag_context}
---- END SCHEMA CONTEXT ---
+    -- **SECONDARY SOURCE: Dynamic RAG Schema** --
+    -- This provides additional context. I will use it for column names, but if it conflicts with the Golden Schema, I will IGNORE the RAG context and trust the Golden Schema.
+    {rag_context}
+    --- END SCHEMA CONTEXT ---
 
+    --- THOUGHT PROCESS (You MUST follow this sequence): ---
 
---- THOUGHT PROCESS (You MUST follow this sequence): ---
+    1.  **Analyze the Task & Consult Golden Schema FIRST:**
+        - The user wants: "{current_task}".
+        - I will immediately look at the `Golden Schema` to identify the correct table and date column for the requested metrics.
+        - **Example:** If the task is "latest closing price", I see in the Golden Schema that `close` is in `bse_abjusted_price_eod` and its date column is `date`. I will use ONLY this table and this date column, ignoring any conflicting suggestions from the RAG context.
+        - The Golden Schema is my ultimate authority.
 
-1.  **Analyze the Task & Consult Golden Schema FIRST:**
-    - The user wants: "{current_task}".
-    - I will immediately look at the `Golden Schema` to identify the correct table and date column for the requested metrics.
-    - **Example:** If the task is "latest closing price", I see in the Golden Schema that `close` is in `bse_abjusted_price_eod` and its date column is `date`. I will use ONLY this table and this date column, ignoring any conflicting suggestions from the RAG context.
-    - The Golden Schema is my ultimate authority.
+    2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for any given table.
+        - For `company_equity` or `company_equity_cons`, the date column is `year_end`. I will NEVER use `date` for this table.
+        - For `company_results` or `company_results_cons`, the date column is `date_end`.
+        - For `bse_abjusted_price_eod`, the date column is `date`.
 
-2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for any given table.
-    - For `company_equity` or `company_equity_cons`, the date column is `year_end`. I will NEVER use `date` for this table.
-    - For `company_results` or `company_results_cons`, the date column is `date_end`.
-    - For `bse_abjusted_price_eod`, the date column is `date`.
+    3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`) to prevent "ambiguous column" errors.
 
-3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`) to prevent "ambiguous column" errors.
+    4.  **Efficient Joins:** I will only JOIN tables if their columns are explicitly required by the RAG context OR if they are needed to fulfill the Golden Schema's instructions for a metric.
 
-4.  **Efficient Joins:** I will only JOIN tables if their columns are explicitly required by the RAG context OR if they are needed to fulfill the Golden Schema's instructions for a metric.
+    5.  **Entity Filtering:** For a specific company like '{entity_name}', I MUST add a WHERE clause to filter by `fincode` using a subquery on `company_master`: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
 
-5.  **Entity Filtering:** For a specific company like '{entity_name}', I MUST add a WHERE clause to filter by `fincode` using a subquery on `company_master`: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
+    6.  **Ranking Queries:** For a 'General Query' (like "top 5"), I MUST NOT filter by a specific company name. I will `ORDER BY` the relevant metric and use `LIMIT`.
 
-6.  **Ranking Queries:** For a 'General Query' (like "top 5"), I MUST NOT filter by a specific company name. I will `ORDER BY` the relevant metric and use `LIMIT`.
+    7.  **"Latest" Data:** For a single entity, I will `ORDER BY [correct_date_column] DESC LIMIT 1`. For rankings, this is more complex and may require a subquery to find the max date per company.
 
-7.  **"Latest" Data:** For a single entity, I will `ORDER BY [correct_date_column] DESC LIMIT 1`. For rankings, this is more complex and may require a subquery to find the max date per company.
+    --- TASK ---
+    Original Question: "{original_question}"
+    Current Task: "{current_task}"
+    Entity Name (if applicable): "{entity_name}"
 
---- TASK ---
-Original Question: "{original_question}"
-Current Task: "{current_task}"
-Entity Name (if applicable): "{entity_name}"
-
-Now, following my rigorous thought process and trusting the Golden Schema above all else, I will write the SQL query as a single JSON object.
+    Now, following my rigorous thought process and trusting the Golden Schema above all else, I will write the SQL query as a single JSON object.
 """
 
 ANSWER_COMPOSER_PROMPT = """
-You are IRIS, a sharp and confident financial analyst AI. Your goal is to synthesize raw data into a final, user-facing response formatted perfectly as Markdown.
+    You are IRIS, a sharp and confident financial analyst AI. Your goal is to synthesize raw data into a final, user-facing response formatted perfectly as Markdown.
 
---- Data Collected ---
-Query Results (JSON format): {results_summary}
----
+    --- Data Collected ---
+    Query Results (JSON format): {results_summary}
+    ---
 
-**--- Part 1: Your Thought Process (for content) ---**
-1.  **Analyze Intent:** First, I will understand the user's original question: "{question}".
-2.  **Extract Key Data:** I will read the JSON `results_summary` to find all the core data points and verdicts.
-3.  **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
-4.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
-5.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
-6.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
-
-
-**Part 2: CRITICAL RULES:**
-1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
-2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
-3.  **Use Full Names:** Use full company names from the results.
-4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
-5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
-6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
-
-7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
-    - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
+    **--- Part 1: Your Thought Process (for content) ---**
+    1.  **Analyze Intent:** First, I will understand the user's original question: "{question}".
+    2.  **Extract Key Data:** I will read the JSON `results_summary` to find all the core data points and verdicts.
+    3.  **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
+    4.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
+    5.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
+    6.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
 
 
-Now, applying BOTH your thought process and formatting rules, transform the internal JSON data into the final, perfect, user-facing markdown response.
+    **Part 2: CRITICAL RULES:**
+    1.  **Be Direct:** Do NOT use fluff like "Here is the answer". Start the response directly.
+    2.  **Indian Numbering:** Format large numbers using 'Lakhs' and 'Crores'.
+    3.  **Use Full Names:** Use full company names from the results.
+    4.  **Handle Lists:** If the result is a list (e.g., top 5 companies), format it as a clean, bulleted list.
+    5.  **Handle Errors:** If a query for a company resulted in an error, state it simply. Example: "I couldn't retrieve the market cap for Reliance Industries due to a data availability issue."
+    6.  **Combine Results:** If there are results for multiple companies, combine them into one natural sentence. Example: "The market cap for Reliance Industries is 19 Lakh Crores, while ABB India's latest sales are 31,595 Crores."
+
+    7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
+        - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
+
+    Now, applying BOTH your thought process and formatting rules, transform the internal JSON data into the final, perfect, user-facing markdown response.
 """
 
 # --- Agent Nodes ---

@@ -28,6 +28,8 @@ iris_stm_checkpoint_test.sqlite-wal
 iris_stm_checkpoint_test.sqlite-shm
 iris_stm_checkpoint.sqlite
 iris_stm_checkpoint_async.sqlite
+iris_api_checkpoint.sqlite-shm
+iris_api_checkpoint.sqlite-wal
 
 fun.md
 
