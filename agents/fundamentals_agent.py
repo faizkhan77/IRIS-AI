@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import json
 from sqlalchemy import text
+import traceback
 from sqlalchemy.ext.asyncio import create_async_engine
 from db_config import ASYNC_DATABASE_URL
 # --- RAG INTEGRATION: Import the NEW intelligent context provider ---
@@ -34,6 +35,7 @@ class ExtractionOutput(BaseModel):
     is_database_required: bool = Field(description="Is database access required to answer the question?")
     is_health_checklist_query: bool = Field(False, description="Set to true ONLY for broad, subjective questions like 'Is [company] strong?', 'Is it a good buy?', or 'fundamental analysis of [company]'.")
     is_multi_metric_query: bool = Field(False, description="Set to true if the user is asking for more than one specific metric for a company (e.g., 'P/E and Market Cap of...').")
+    is_shareholding_query: bool = Field(False, description="Set to true ONLY for questions about shareholding patterns, promoters, FII, DII, or public holdings.")  
     entities: List[IdentifiedEntity] = Field(description="List of all unique financial entities found in the query.")
     tasks: Dict[str, Any] = Field(description="A dictionary mapping each entity_name (or 'General Query') to a concise description of the data needed for it.")
     known_schema_lookups: Optional[Dict[str, KnownSchema]] = Field(None, description="If a task can be answered by a single known column from the Golden Schema, map the task to its table and column here.")
@@ -149,6 +151,10 @@ EXTRACT_PROMPT = """
         - **Examples:** "What is the x, y and z of X?", "Give me the x, y, and y for X"
         - If YES, you MUST set `is_multi_metric_query` to `true`. The `tasks` for that entity MUST be a LIST of the individual metrics requested.
 
+    4. **Shareholding Pattern Query (`is_shareholding_query`):** First, check if the question is specifically about the shareholding structure.
+        - **Examples:** "shareholding pattern of Reliance", "Who are the major shareholders?", "promoter holding in ABB", "FII DII holding"
+        - If YES, you MUST set `is_shareholding_query` to `true`. This is the highest priority.
+
 
     **Final JSON Output Rules:**
     - `is_database_required`: Set to true if financial data is needed.
@@ -157,16 +163,19 @@ EXTRACT_PROMPT = """
 
     --- EXAMPLES ---
     User Question: "Is Reliance Industries strong?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": true,"is_multi_metric_query": false, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Fundamental health analysis for Reliance Industries"}}, "known_schema_lookups": null}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": true,"is_shareholding_query": false,"is_multi_metric_query": false, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Fundamental health analysis for Reliance Industries"}}, "known_schema_lookups": null}}
 
     User Question: "List all distinct industries"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_multi_metric_query": false, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false,"is_shareholding_query": false, "is_multi_metric_query": false, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
 
     User Question: "What is the market cap of Company ABC?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false,"is_multi_metric_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false,"is_shareholding_query": false,"is_multi_metric_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
 
     User Question: "What is the x and y of Company X?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_multi_metric_query": true, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": ["market capitalization", "P/E ratio"]}}, "known_schema_lookups": null}}
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_shareholding_query": false, "is_multi_metric_query": true, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": ["market capitalization", "P/E ratio"]}}, "known_schema_lookups": null}}
+
+    User Question: "What is the shareholding pattern for Reliance Industries?"
+    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_shareholding_query": true, "is_multi_metric_query": false, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Detailed shareholding pattern for Reliance Industries"}}, "known_schema_lookups": null}}
 
     ---
     User Question: {question}
@@ -246,9 +255,11 @@ ANSWER_COMPOSER_PROMPT = """
     1.  **Analyze Intent:** First, I will understand the user's original question: "{question}".
     2.  **Extract Key Data:** I will read the JSON `results_summary` to find all the core data points and verdicts.
     3.  **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
-    4.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
-    5.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
-    6.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
+    4.  **Shareholding Logic:** If the results contain keys like 'Promoters', 'FIIs', 'DIIs', this is a shareholding breakdown. I MUST present this clearly in a bulleted list.
+    5.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
+    6.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
+    7. **Comparison Logic:** If the user asked to "compare" and the JSON has data for multiple entities, I MUST present the data in a comparison format, ideally a markdown table.
+    8.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
 
 
     **Part 2: CRITICAL RULES:**
@@ -261,6 +272,15 @@ ANSWER_COMPOSER_PROMPT = """
 
     7.  **NEW -> Synthesize Health Checklist:** If the query results contain multiple fundamental metrics (mcap, net_sales, pe_ratio, etc.), this is a health check. Do not just list the numbers. Synthesize them into a 2-3 sentence summary and conclude with a **Hold, Buy, or Sell** recommendation based on the data.
         - *Example:* "Reliance Industries shows strong fundamentals. It has a significant market cap of 19 Lakh Crores and healthy net sales. However, its P/E ratio is quite high, suggesting the price may be expensive. Based on these factors, the fundamental outlook is a **Hold**."
+
+    --- PERFECT Comparison Example ---
+    *If the user asked "Compare PE and market cap of X and Y"*
+    Here is a comparison of the requested metrics for **X** and **Y**:
+
+    | Metric              | X                | Y                |
+    | ------------------- | ---------------- | ---------------- |
+    | P/E Ratio           | **25.5**         | **30.1**         |
+    | Market Cap (Cr.)    | **1,50,000 Cr.** | **95,000 Cr.**   |
 
     Now, applying BOTH your thought process and formatting rules, transform the internal JSON data into the final, perfect, user-facing markdown response.
 """
@@ -279,33 +299,156 @@ async def extract_node(state: FundamentalsAgentState) -> Dict:
         return {"error_message": f"Failed to understand the query's structure. Error: {e}"}
 
 
+async def execute_shareholding_pattern_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Executes a comprehensive, pre-defined SQL query to get a detailed
+    shareholding pattern, then performs all necessary calculations.
+    """
+    print("---NODE: Execute Shareholding Pattern (Hard-coded Tool)---")
+    
+    entities = state["extraction"].entities
+    if not entities:
+        return {"error_message": "A company name is required for shareholding analysis."}
+
+    # This single, expanded query fetches all necessary raw percentage fields for a detailed breakdown.
+    shareholding_query = text("""
+        SELECT
+            tp_f_total_promoter,
+            tp_in_fii,
+            tp_in_subtotal,
+            tp_in_cgovt,
+            tp_total_public,
+            nh_grand_total,
+            tp_in_mf_uti,
+            tp_in_insurance,
+            tp_in_fi_banks,
+            tp_nin_indivd,
+            tp_nin_body_corp,
+            tp_nin_subtotal
+        FROM company_shareholding_pattern
+        WHERE fincode = :fincode
+        ORDER BY date_end DESC
+        LIMIT 1
+    """)
+
+    async_engine_instance = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    query_results = {}
+    
+    try:
+        async with async_engine_instance.connect() as connection:
+            for entity in entities:
+                entity_name = entity.entity_name
+                print(f"Executing detailed shareholding query for: {entity_name}")
+                
+                fincode_query = text("SELECT fincode FROM company_master WHERE compname LIKE :pattern LIMIT 1")
+                fincode_result = await connection.execute(fincode_query, {"pattern": f"%{entity_name}%"})
+                fincode = fincode_result.scalar_one_or_none()
+
+                if not fincode:
+                    result_str = json.dumps([{"error": f"Company '{entity_name}' not found."}])
+                else:
+                    result = await connection.execute(shareholding_query, {"fincode": fincode})
+                    raw_data = result.mappings().one_or_none()
+                    
+                    if not raw_data:
+                         result_str = json.dumps([{"error": f"No shareholding data found for '{entity_name}'."}])
+                    else:
+                        # Get all raw values, defaulting to 0 if None
+                        promoters_perc = raw_data.get('tp_f_total_promoter') or 0
+                        fii_perc = raw_data.get('tp_in_fii') or 0
+                        total_inst_perc = raw_data.get('tp_in_subtotal') or 0
+                        govt_perc = raw_data.get('tp_in_cgovt') or 0
+                        total_public_perc = raw_data.get('tp_total_public') or 0
+                        
+                        # DII sub-components
+                        mf_perc = raw_data.get('tp_in_mf_uti') or 0
+                        ins_perc = raw_data.get('tp_in_insurance') or 0
+                        bnk_perc = raw_data.get('tp_in_fi_banks') or 0
+
+                        # Public Non-Institutional sub-components
+                        retail_perc = raw_data.get('tp_nin_indivd') or 0
+                        corp_bodies_perc = raw_data.get('tp_nin_body_corp') or 0
+                        total_non_inst_perc = raw_data.get('tp_nin_subtotal') or 0
+
+                        # --- Perform Comprehensive Calculations ---
+                        # DIIs
+                        total_dii_perc = total_inst_perc - fii_perc
+                        other_dii_perc = total_dii_perc - mf_perc - ins_perc - bnk_perc
+
+                        # Public
+                        other_public_non_inst_perc = total_non_inst_perc - retail_perc - corp_bodies_perc
+
+                        # Final calculated data dictionary for the composer node
+                        calculated_data = {
+                            "Promoters": round(promoters_perc, 2),
+                            "Foreign Institutions (FIIs)": round(fii_perc, 2),
+                            "Domestic Institutions (DIIs)": round(total_dii_perc, 2),
+                            "DII - Mutual Funds": round(mf_perc, 2),
+                            "DII - Insurance Co.": round(ins_perc, 2),
+                            "DII - Banks & Fin. Inst.": round(bnk_perc, 2),
+                            "DII - Others": round(other_dii_perc, 2),
+                            "Government": round(govt_perc, 2),
+                            "Public": round(total_public_perc - total_inst_perc - govt_perc, 2),
+                            "Public - Individuals (Retail)": round(retail_perc, 2),
+                            "Public - Corporate Bodies": round(corp_bodies_perc, 2),
+                            "Public - Others": round(other_public_non_inst_perc, 2),
+                            "Total Shareholders": raw_data.get('nh_grand_total') or 0
+                        }
+                        result_str = json.dumps([calculated_data])
+                
+                print(f"Result for '{entity_name}': {result_str}")
+                query_results[entity_name] = result_str
+        
+        return {"query_results": query_results}
+
+    except Exception as e:
+        error_msg = f"Error executing shareholding query: {e!r}"
+        print(error_msg)
+        traceback.print_exc()
+        return {"error_message": error_msg}
+    finally:
+        await async_engine_instance.dispose()
+
+
+
 async def execute_multi_metric_node(state: FundamentalsAgentState) -> Dict:
     """
-    Handles a query asking for multiple specific metrics for one or more companies.
-    It fans-out to run Text-to-SQL for each metric in parallel.
+    Handles any query asking for one-or-more metrics for one-or-more companies.
+    It flattens all tasks, runs them in parallel, and re-groups the results.
     """
-    print("---NODE: Execute Multi-Metric Parallel Queries---")
+    print("---NODE: Execute Multi-Entity, Multi-Metric Parallel Queries---")
     
     original_extraction = state["extraction"]
-    entity_name = original_extraction.entities[0].entity_name
-    list_of_metrics = original_extraction.tasks[entity_name]
     
-    tasks_for_sub_graph = {f"{entity_name} - {metric}": f"latest {metric} for {entity_name}" for metric in list_of_metrics}
-    
+    # --- STEP 1: Flatten the tasks from all entities into a single list ---
+    # The key will be "Entity Name - Metric Name" to keep them unique
+    flattened_tasks = {}
+    for entity_name, metrics in original_extraction.tasks.items():
+        if isinstance(metrics, list):
+            for metric in metrics:
+                task_key = f"{entity_name} - {metric}"
+                flattened_tasks[task_key] = f"latest {metric} for {entity_name}"
+        else: # Handles cases where a single metric is not in a list
+            task_key = f"{entity_name} - {metrics}"
+            flattened_tasks[task_key] = f"latest {metrics} for {entity_name}"
+
+    print(f"Flattened tasks for processing: {flattened_tasks}")
+
+    # Create a temporary extraction object for the sub-graph nodes
     sub_extraction_object = ExtractionOutput(
         is_database_required=True,
         is_health_checklist_query=False,
-        is_multi_metric_query=False,
-        entities=original_extraction.entities,
-        tasks=tasks_for_sub_graph,
+        is_multi_metric_query=False, # We are now treating them as individual tasks
+        is_shareholding_query=False,
+        entities=original_extraction.entities, # Pass all entities for context
+        tasks=flattened_tasks,
         known_schema_lookups={}
     )
     
-    # --- STEP 1: Generalize & RAG ---
+    # --- STEP 2: Run the full RAG -> SQL -> Execute pipeline on the flattened tasks ---
     rag_input_state = {"extraction": sub_extraction_object}
     rag_contexts_result = await parallel_generalize_and_rag_node(rag_input_state)
     
-    # --- STEP 2: Write SQL ---
     sql_writer_input_state = {
         "question": state["question"],
         "extraction": sub_extraction_object,
@@ -313,30 +456,42 @@ async def execute_multi_metric_node(state: FundamentalsAgentState) -> Dict:
     }
     sql_queries_result = await parallel_write_queries_node(sql_writer_input_state)
     
-    # --- STEP 3: Execute SQL (THIS IS THE FIX) ---
     execute_queries_input_state = {"sql_queries": sql_queries_result["sql_queries"]}
-    # You must CALL the function with `()` and pass the input state.
     query_results_result = await parallel_execute_queries_node(execute_queries_input_state)
 
-    # --- Reformat the results for the final composer node ---
-    combined_data = {}
+    # --- STEP 3: Re-group the results by the original entity name ---
+    final_query_results = {}
     for task_key, json_str_result in query_results_result["query_results"].items():
         try:
-            metric_name = task_key.split(" - ", 1)[1]
-            data = json.loads(json_str_result)
-            if data and isinstance(data, list) and data[0] is not None:
-                metric_value = list(data[0].values())[0]
-                combined_data[metric_name] = metric_value
-            else:
-                combined_data[metric_name] = "N/A"
-        except (json.JSONDecodeError, IndexError, KeyError, TypeError):
-            combined_data[metric_name] = "Error parsing result"
+            # Split "Entity Name - Metric Name" to get the parts
+            entity_name, metric_name = task_key.split(" - ", 1)
             
-    # Package the combined data under the entity name for the composer
-    # The final composer expects a dictionary of JSON strings
-    final_query_results = {entity_name: json.dumps([combined_data])}
+            # Initialize the dictionary for the entity if it doesn't exist
+            if entity_name not in final_query_results:
+                final_query_results[entity_name] = {}
+                
+            data = json.loads(json_str_result)
+            if data and isinstance(data, list) and data[0] is not None and len(data[0]) > 0:
+                # Get the first value from the first row of the result
+                metric_value = list(data[0].values())[0]
+                final_query_results[entity_name][metric_name] = metric_value
+            else:
+                final_query_results[entity_name][metric_name] = "N/A"
+        except (json.JSONDecodeError, IndexError, KeyError, TypeError, ValueError) as e:
+            # Handle cases where splitting or parsing fails
+            print(f"Error processing result for task '{task_key}': {e}")
+            entity_name, metric_name = task_key.split(" - ", 1)
+            if entity_name not in final_query_results:
+                final_query_results[entity_name] = {}
+            final_query_results[entity_name][metric_name] = "Error parsing result"
+
+    # Convert the inner dictionaries to JSON strings for the composer node
+    # Final structure: {"Reliance Industries": "[{...}]", "ABB India": "[{...}]"}
+    final_results_for_composer = {
+        entity: json.dumps([data]) for entity, data in final_query_results.items()
+    }
     
-    return {"query_results": final_query_results}
+    return {"query_results": final_results_for_composer}
 
 # --- FINAL FIX: Replace the entire execute_health_checklist_node function with this one ---
 async def execute_health_checklist_node(state: FundamentalsAgentState) -> Dict:
@@ -589,6 +744,35 @@ async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
                     "data": data_points
                 })
 
+
+    # --- NEW: Check for shareholding data and create a pie chart ---
+    if not ui_components and query_results:
+        first_result_key = next(iter(query_results))
+        try:
+            first_result_data = json.loads(query_results[first_result_key])
+            # Check for the unique 'Promoters' key to identify shareholding data
+            if first_result_data and "Promoters" in first_result_data[0]:
+                print("--- Shareholding data detected. Creating Pie Chart. ---")
+                shareholding_data = first_result_data[0]
+                # We only chart the top-level categories for a clean pie chart
+                pie_chart_data = [
+                    {"name": "Promoters", "value": shareholding_data.get("Promoters", 0)},
+                    {"name": "FIIs", "value": shareholding_data.get("Foreign Institutions (FIIs)", 0)},
+                    {"name": "DIIs", "value": shareholding_data.get("Domestic Institutions (DIIs)", 0)},
+                    {"name": "Government", "value": shareholding_data.get("Government", 0)},
+                    {"name": "Public", "value": shareholding_data.get("Public", 0)},
+                ]
+                # Filter out zero-value slices
+                pie_chart_data = [item for item in pie_chart_data if item["value"] > 0]
+                
+                ui_components.append({
+                    "type": "pie_chart",
+                    "title": f"Shareholding Pattern for {first_result_key}",
+                    "data": pie_chart_data
+                })
+        except (json.JSONDecodeError, IndexError, KeyError):
+            pass # Data wasn't shareholding data, so we do nothing.
+
     # Check for data suitable for a ranking bar chart
     if not ui_components and "General Query" in query_results:
         try:
@@ -637,12 +821,13 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
     - If DB is not needed, go straight to the answer.
     - Otherwise, go to the RAG path.
     """
-    if state.get("error_message"):
-        return "end"
+    if state.get("error_message"): return "end"
     
-    # --- THIS IS THE CRITICAL FIX ---
-    # Correctly access the extraction result from the state dictionary.
     extraction = state["extraction"]
+
+    if extraction.is_shareholding_query:
+        print("Routing to: Shareholding Pattern Tool")
+        return "shareholding_path"
 
     if extraction.is_health_checklist_query:
         print("Routing to: Health Checklist Tool")
@@ -663,6 +848,7 @@ graph_builder = StateGraph(FundamentalsAgentState)
 
 # Add all nodes, including our new one
 graph_builder.add_node("extract", extract_node)
+graph_builder.add_node("execute_shareholding_pattern", execute_shareholding_pattern_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
 graph_builder.add_node("execute_queries", parallel_execute_queries_node)
@@ -673,19 +859,23 @@ graph_builder.add_node("compose_answer", compose_final_answer_node)
 
 graph_builder.add_node("execute_multi_metric", execute_multi_metric_node)
 
+# EDGES
 graph_builder.set_entry_point("extract")
 
 graph_builder.add_conditional_edges(
     "extract",
     route_after_extraction,
     {
-        "health_check_path": "execute_health_checklist", # Route to health check first
+        "shareholding_path": "execute_shareholding_pattern", # NEW ROUTE
+        "health_check_path": "execute_health_checklist", 
         "multi_metric_path": "execute_multi_metric", 
         "rag_path": "generalize_and_rag", 
         "general_path": "compose_answer", 
         "end": END
     }
 )
+
+graph_builder.add_edge("execute_shareholding_pattern", "compose_answer")
 
 # --- MODIFIED EDGES FOR THE HEALTH CHECK PATH ---
 # After fetching health metrics, now fetch the price history for the chart
@@ -713,7 +903,9 @@ app = graph_builder.compile()
 if __name__ == "__main__":
     async def run_funda_agent_test():
         test_queries = [
-            "What are the market capitalization, current price, high/low, dividend yield, P/E ratio, book value, return on capital employed (ROCE), and return on equity (ROE) of Reliance Industries?"
+            "What are the market capitalization, current price, high/low, dividend yield, P/E ratio, book value, return on capital employed (ROCE), and return on equity (ROE) of Reliance Industries?",
+            "What is the shareholding pattern of Reliance Industries?",
+            "Show me the promoter vs public holding for ABB India",
             # "Is Reliance strong based on Fundamental Analysis?",
             # "What is the market cap of Reliance Industries and the latest sales for ABB India?",
             # "What is the business description of Ambalal Sarabhai?",

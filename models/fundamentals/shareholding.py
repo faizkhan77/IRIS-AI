@@ -400,3 +400,5 @@ class ShpSummary(SQLModel, table=True):
     dp_nin_ind_emp_trust: Optional[float] = Field(default=None, description="Demat - Public - Non-Institutions - Employee Trusts")  # 368
     tp_nin_ind_emp_trust: Optional[float] = Field(default=None, description="% - Public - Non-Institutions - Employee Trusts")  # 369
     flag: Optional[str] = Field(default=None, max_length=1, description="Updation Flag")  # 370
+
+    
