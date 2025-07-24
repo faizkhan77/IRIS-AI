@@ -41,6 +41,7 @@ class IrisRoute(str, Enum):
 class SupervisorDecision(BaseModel):
     route: IrisRoute
     reasoning: str
+
 class LtmSaveRequest(RootModel[Dict[str, Any]]):
     pass
 
@@ -104,11 +105,20 @@ SUPERVISOR_PROMPT_TEMPLATE = """
     {chat_history}
     - **User's Current Raw Query:** "{user_input}"
 
+    **Strict Rules:**
+    1.  **Identify New Subject First:** Always identify the primary subject and intent from the user's **latest input** (e.g., "Analyze Reliance", "What is the P/E of INFY?"). This is your anchor.
+    2.  **Resolve References:** If the latest input contains pronouns or references (like 'them', 'that', 'it'), use the chat history to resolve **only those specific references**.
+    3.  **Combine and Reconstruct:** Your primary goal is to **merge** the resolved references from the history with the new subject and intent from the latest input to form a single, complete, new query.
+    4.  **Preserve Intent:** If the original input is a question, the output must be a question.
+    5.  **Be Concise:** Your entire output must be ONLY the final, rewritten query.
+    6.  **No-Op:** If the user's input is already a complete, standalone query, return it EXACTLY AS IS.
+
     **--- YOUR THOUGHT PROCESS (You MUST follow this logic): ---**
 
     1.  **Long-Term Memory (LTM) Check - HIGHEST PRIORITY:**
-        - Is the user **TELLING ME** a preference to remember? (e.g., "My favorite stock is...", "I prefer...", "My investment style is..."). If YES, route to **`save_ltm`**.
-        - Is the user **ASKING ME** about a preference I should already know? (e.g., "What is my favorite stock?", "Which indicators do I like?"). If YES, route to **`load_ltm`**.
+        - Is the user **TELLING ME** a new preference to remember? (e.g., "My favorite stock is...", "I prefer..."). If YES, route to **`save_ltm`**.
+        - Is the user's primary goal to **RECALL** a saved preference? (e.g., "What is my favorite stock?", "Remind me which indicators I like?"). If YES, route to **`load_ltm`**.
+        - **IMPORTANT:** If the user wants to **APPLY** a known preference to a new task (e.g., "Analyze GOOGL based on my favorite indicators"), DO NOT route to `load_ltm`. Instead, proceed to the other checks below (this query should likely go to `technicals` or `cross_agent_reasoning`).
 
     2.  **Contextual Follow-up Check:**
         - Does the query refer to a previous turn (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
@@ -435,7 +445,7 @@ class IrisOrchestrator:
             return {"supervisor_decision": SupervisorDecision(route=IrisRoute.CLARIFICATION, reasoning=f"Supervisor Error: {e}")}
 
     async def rewrite_for_agent_node(self, state: IrisState) -> Dict:
-        print("---NODE: Rewrite Question for Agent---")
+        print("---NODE: Rewrite and Enrich Question for Agent---")
         user_input = state["user_input"]
         history = state.get('full_chat_history', [])
 
@@ -444,16 +454,71 @@ class IrisOrchestrator:
             return {} 
 
         history_str = "\n".join([f"{m.type}: {m.content}" for m in history[-6:]])
-        prompt = REWRITE_QUESTION_PROMPT.format(chat_history=history_str, question=user_input)
-        response = await groq_llm_fast.ainvoke(prompt)
-        rewritten_str = response.content.strip().strip('"')
+        
+        # --- Part 1: Standard Rewrite for context and pronouns ---
+        rewrite_prompt = REWRITE_QUESTION_PROMPT.format(chat_history=history_str, question=user_input)
+        rewrite_response = await groq_llm_fast.ainvoke(rewrite_prompt)
+        rewritten_str = rewrite_response.content.strip().strip('"')
+        print(f"Initial rewrite: '{rewritten_str}'")
 
+        # --- Part 2: Intelligent Enrichment with LTM data ---
+        # Check if the query implies using saved preferences
+        enrichment_check_prompt = f"""
+            Analyze the following user query and conversation history.
+            Does the query ask to APPLY or USE a previously mentioned preference (like 'favorite indicators', 'my style', 'based on them')?
+            Answer with a single word: YES or NO.
+
+            History: {history_str}
+            Query: {user_input}
+        """
+        check_response = await groq_llm_fast.ainvoke(enrichment_check_prompt)
+        needs_enrichment = "yes" in check_response.content.lower()
+
+        if needs_enrichment:
+            print("Query implies use of LTM. Fetching preferences for enrichment...")
+            try:
+                # Fetch the preferences from the database
+                raw_ltm_data = await asyncio.to_thread(db_ltm.get_user_preferences, state["db_user_id"])
+                if raw_ltm_data:
+                    # Parse and format the preferences for injection
+                    parsed_prefs = {}
+                    for key, value in raw_ltm_data.items():
+                        try:
+                            parsed_prefs[key] = json.loads(value)
+                        except (json.JSONDecodeError, TypeError):
+                            parsed_prefs[key] = value
+                    
+                    # Create a clear, readable string of preferences
+                    pref_str_parts = []
+                    if 'fav_indicator' in parsed_prefs:
+                        indicators = parsed_prefs['fav_indicator']
+                        if isinstance(indicators, list):
+                            pref_str_parts.append(f"indicators: {', '.join(indicators)}")
+                        else:
+                            pref_str_parts.append(f"indicator: {indicators}")
+                    
+                    if 'investment_style' in parsed_prefs:
+                        pref_str_parts.append(f"investment style: {parsed_prefs['investment_style']}")
+
+                    if pref_str_parts:
+                        # Construct the final, enriched query
+                        final_pref_str = " and ".join(pref_str_parts)
+                        enriched_question = f"{rewritten_str} (using my preferences: {final_pref_str})"
+                        print(f"Original question: '{user_input}'")
+                        print(f"Enriched question for agent: '{enriched_question}'")
+                        return {"user_input": enriched_question}
+
+            except Exception as e:
+                print(f"--- WARNING: Failed to enrich query with LTM data: {e} ---")
+                # Fallback to the simply rewritten question if enrichment fails
+        
+        # If no enrichment was needed or it failed, use the standard rewritten string
         if rewritten_str.lower() != user_input.lower():
             print(f"Original question: '{user_input}'")
-            print(f"Rewritten question for agent: '{rewritten_str}'")
+            print(f"Final (rewritten only) question for agent: '{rewritten_str}'")
             return {"user_input": rewritten_str}
         else:
-            print("Question is already self-contained.")
+            print("Question is already self-contained, no changes made.")
             return {}
 
     async def save_ltm_node(self, state: IrisState) -> Dict:

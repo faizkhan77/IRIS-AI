@@ -913,8 +913,7 @@ if __name__ == "__main__":
             # "Scripcode and fincode of ABB India",
             # "What is the latest promoter shareholding percentage for Reliance Industries?",
             # "List all distinct industries",
-
-# "What are the top 5 companies by market capitalization?"       
+            # "What are the top 5 companies by market capitalization?"       
 
         ]
         for q_text in test_queries:
