@@ -198,7 +198,6 @@ GENERALIZE_TASK_PROMPT = """
     Your Output:
 """
 
-
 # --- FINAL FIX: Incorporating the strict Golden Schema rule into your existing prompt ---
 WRITE_QUERY_PROMPT = """
     You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query. You must follow a strict thought process.
@@ -279,8 +278,8 @@ ANSWER_COMPOSER_PROMPT = """
 
     | Metric              | X                | Y                |
     | ------------------- | ---------------- | ---------------- |
-    | P/E Ratio           | **25.5**         | **30.1**         |
-    | Market Cap (Cr.)    | **1,50,000 Cr.** | **95,000 Cr.**   |
+    | example1            | **25.5**         | **30.1**         |
+    | example2            | **1,50,000 Cr.** | **95,000 Cr.**   |
 
     Now, applying BOTH your thought process and formatting rules, transform the internal JSON data into the final, perfect, user-facing markdown response.
 """
