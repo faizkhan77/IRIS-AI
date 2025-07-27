@@ -3,7 +3,7 @@ import asyncio
 from langgraph.graph import START, StateGraph, END
 from typing import TypedDict, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
+from dotenv import load_dotenv 
 import json
 from sqlalchemy import text
 import traceback
