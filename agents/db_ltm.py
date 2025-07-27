@@ -15,7 +15,7 @@ try:
         pool_size=5,
         host=os.getenv("DB_HOST", "localhost"),
         user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "root"),
+        password=os.getenv("DB_PASSWORD", "R22.Mane"),
         database="iris_long_term_memory"
     )
     print("MySQL Connection Pool for LTM created successfully.")
