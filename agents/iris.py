@@ -37,6 +37,7 @@ class IrisRoute(str, Enum):
     OUT_OF_DOMAIN = "out_of_domain" # For non-financial questions
     GENERAL = "general" # For greetings
     RECOMMENDATION = "recommendation"
+    
 
 # --- Pydantic & State Definitions ---
 class SupervisorDecision(BaseModel):

@@ -727,6 +727,59 @@ def aggregate_signals(
         "breakdown": breakdown
     }
 
+
+
+
+def calculate_historical_performance_score(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Calculates a comprehensive technical performance score based on historical data.
+    This is NOT a point-in-time signal, but an evaluation over the entire period.
+    """
+    df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
+    if df is None or len(df) < 200: # Require at least ~10 months of data for meaningful stats
+        return {"error": "Insufficient data for historical performance analysis (requires at least 200 trading days)."}
+
+    try:
+        # Metric 1: Price Appreciation (CAGR)
+        start_price = df['close'].iloc[0]
+        end_price = df['close'].iloc[-1]
+        num_years = len(df) / 252.0  # Approx. trading days in a year
+        price_cagr = ((end_price / start_price) ** (1 / num_years) - 1) * 100 if num_years > 0 and start_price > 0 else 0
+
+        # Metric 2: Volatility (Annualized Standard Deviation of daily returns)
+        daily_returns = df['close'].pct_change().dropna()
+        volatility = daily_returns.std() * np.sqrt(252) * 100
+
+        # Metric 3: Sharpe Ratio (simple version, assuming 5% risk-free rate)
+        risk_free_rate = 0.05
+        avg_daily_return = daily_returns.mean()
+        std_dev_daily_return = daily_returns.std()
+        sharpe_ratio = ((avg_daily_return * 252) - risk_free_rate) / (std_dev_daily_return * np.sqrt(252)) if std_dev_daily_return > 0 else 0
+
+        # --- Scoring Logic (0-10 scale) ---
+        # CAGR Score: Scaled up to 50% CAGR for a max score of 10
+        cagr_score = min(10, max(0, price_cagr / 5.0))
+        # Volatility Score: Lower is better. Score 10 for <15% volatility, 0 for >55%
+        volatility_score = min(10, max(0, 10 - ((volatility - 15) / 4.0)))
+        # Sharpe Ratio Score: Higher is better. Score 10 for Sharpe >= 1.5
+        sharpe_score = min(10, max(0, (sharpe_ratio + 0.5) * 5))
+
+        # --- Final Weighted Score ---
+        # For "consistent performance", we value risk-adjusted returns (Sharpe) and growth (CAGR) highly.
+        final_score = (0.4 * cagr_score) + (0.4 * sharpe_score) + (0.2 * volatility_score)
+
+        return {
+            "signal": "historical_performance",
+            "technical_performance_score": round(final_score, 2),
+            "price_cagr_perc": round(price_cagr, 2),
+            "annualized_volatility_perc": round(volatility, 2),
+            "sharpe_ratio": round(sharpe_ratio, 2),
+            "note": f"Performance analysis over {num_years:.1f} years."
+        }
+    except Exception as e:
+        return {"error": f"Error during historical performance calculation: {str(e)}"}
+
+
 # Map of indicator names to their calculation functions
 INDICATOR_TOOLS_MAP = {
     "rsi": calculate_rsi,
@@ -742,7 +795,8 @@ INDICATOR_TOOLS_MAP = {
     "vwap": calculate_vwap,
     "stochastic": calculate_stochastic_oscillator,
     "stddev": calculate_standard_deviation,
-    "obv": calculate_obv
+    "obv": calculate_obv,
+     "historical_performance_score": calculate_historical_performance_score
 }
 
 # Default set of indicators for a general "should I buy/sell" query
