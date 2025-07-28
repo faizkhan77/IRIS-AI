@@ -3,12 +3,15 @@ import asyncio
 from langgraph.graph import START, StateGraph, END
 from typing import TypedDict, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from dotenv import load_dotenv
 import json
 from sqlalchemy import text
 import traceback
 from sqlalchemy.ext.asyncio import create_async_engine
 from db_config import ASYNC_DATABASE_URL
+from .screener_strategies import SCREENER_STRATEGIES, COLUMN_TO_TABLE_MAP
+
 # --- RAG INTEGRATION: Import the NEW intelligent context provider ---
 from agents.rag_context_provider import get_intelligent_context
 from pydantic import BaseModel, Field, model_validator
@@ -33,12 +36,17 @@ class KnownSchema(BaseModel):
 
 class ExtractionOutput(BaseModel):
     is_database_required: bool = Field(description="Is database access required to answer the question?")
+    is_recommendation_query: bool = Field(False, description="Set to true ONLY for recommendation or screener queries like 'suggest stocks', 'top 5 companies based on...', 'recommend me...'.")
     is_health_checklist_query: bool = Field(False, description="Set to true ONLY for broad, subjective questions like 'Is [company] strong?', 'Is it a good buy?', or 'fundamental analysis of [company]'.")
     is_multi_metric_query: bool = Field(False, description="Set to true if the user is asking for more than one specific metric for a company (e.g., 'P/E and Market Cap of...').")
     is_shareholding_query: bool = Field(False, description="Set to true ONLY for questions about shareholding patterns, promoters, FII, DII, or public holdings.")  
     entities: List[IdentifiedEntity] = Field(description="List of all unique financial entities found in the query.")
     tasks: Dict[str, Any] = Field(description="A dictionary mapping each entity_name (or 'General Query') to a concise description of the data needed for it.")
     known_schema_lookups: Optional[Dict[str, KnownSchema]] = Field(None, description="If a task can be answered by a single known column from the Golden Schema, map the task to its table and column here.")
+
+class StrategySelection(BaseModel):
+    strategy_key: str = Field(description="The chosen strategy key, e.g., 'QUALITY_INVESTING'.")
+    reasoning: str = Field(description="A brief explanation for why this strategy was chosen.")
 
 class GeneralizedQuery(BaseModel):
     generalized_question: str = Field(description="A generic question for RAG context retrieval, with specific entity names removed.")
@@ -69,6 +77,8 @@ class SQLQuery(BaseModel):
 class FundamentalsAgentState(TypedDict):
     question: str
     extraction: Optional[ExtractionOutput]
+    selected_strategy_key: Optional[str]
+    screener_results: Optional[Dict[str, Any]]
     generalized_tasks: Optional[Dict[str, str]]
     rag_contexts: Optional[Dict[str, str]]
     sql_queries: Optional[Dict[str, str]]
@@ -136,7 +146,11 @@ EXTRACT_PROMPT = """
     
     **Intent Categorization Rules (in order of priority):**
 
-    1.  **Fundamental Health Check (`is_health_checklist_query`):** First, check if the user is asking a broad, subjective question about a company's overall health, strength, or a general "buy" recommendation.
+    1. **Recommendation & Screener Query (`is_recommendation_query`):** HIGHEST PRIORITY. Check if the user is asking for a recommendation, suggestion, or a list of stocks based on criteria.
+        - **Examples:** "recommend me some value stocks", "top 5 companies by market cap", "best stocks for beginners", "stocks with high ROCE and low debt"
+        - If YES, you MUST set `is_recommendation_query` to `true`. This overrides all other categories.
+        
+    2. **Fundamental Health Check (`is_health_checklist_query`):** First, check if the user is asking a broad, subjective question about a company's overall health, strength, or a general "buy" recommendation.
         - **Examples:** "Is Reliance strong?", "Should I buy ABB India?", "fundamental analysis of Ambalal Sarabhai"
         - If YES, you MUST set `is_health_checklist_query` to `true`. This is the highest priority and overrides all other rules.
 
@@ -253,12 +267,16 @@ ANSWER_COMPOSER_PROMPT = """
     **--- Part 1: Your Thought Process (for content) ---**
     1.  **Analyze Intent:** First, I will understand the user's original question: "{question}".
     2.  **Extract Key Data:** I will read the JSON `results_summary` to find all the core data points and verdicts.
-    3.  **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
-    4.  **Shareholding Logic:** If the results contain keys like 'Promoters', 'FIIs', 'DIIs', this is a shareholding breakdown. I MUST present this clearly in a bulleted list.
-    5.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
-    6.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
-    7. **Comparison Logic:** If the user asked to "compare" and the JSON has data for multiple entities, I MUST present the data in a comparison format, ideally a markdown table.
-    8.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
+    3. **Recommendation Logic:** If the results contain a `strategy_name`, this is a stock recommendation.
+        -   First, state which strategy was used and why (using the `strategy_name` and `reasoning`).
+        -   Then, present the `stocks` in a clean markdown table.
+        -   Provide a brief concluding summary.
+    4. **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
+    5.  **Shareholding Logic:** If the results contain keys like 'Promoters', 'FIIs', 'DIIs', this is a shareholding breakdown. I MUST present this clearly in a bulleted list.
+    6.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
+    7.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
+    8. **Comparison Logic:** If the user asked to "compare" and the JSON has data for multiple entities, I MUST present the data in a comparison format, ideally a markdown table.
+    9.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
 
 
     **Part 2: CRITICAL RULES:**
@@ -297,6 +315,84 @@ async def extract_node(state: FundamentalsAgentState) -> Dict:
     except Exception as e:
         return {"error_message": f"Failed to understand the query's structure. Error: {e}"}
 
+async def select_strategy_node(state: FundamentalsAgentState) -> Dict:
+    print("---NODE: Select Screener Strategy---")
+    strategy_descriptions = "\n".join([f"- **{key}**: {details['name']} - {details['description']}" for key, details in SCREENER_STRATEGIES.items()])
+    prompt = ChatPromptTemplate.from_template("Select the best strategy for the user's query.\n\n**Strategies:**\n{strategies}\n\n**User's Query:** \"{question}\"\n\nChoose the single best strategy key and provide your reasoning.")
+    strategy_chain = prompt | groq_llm_fast.with_structured_output(StrategySelection)
+    try:
+        selection = await strategy_chain.ainvoke({"strategies": strategy_descriptions, "question": state["question"]})
+        print(f"Strategy Selected: {selection.strategy_key}, Reason: {selection.reasoning}")
+        return {"selected_strategy_key": selection.strategy_key, "query_results": {"recommendation": json.dumps({"reasoning": selection.reasoning})}}
+    except Exception as e:
+        return {"error_message": f"I had trouble determining a strategy: {e}"}
+
+
+async def execute_screener_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Deterministically builds and executes a SQL query based on the selected strategy.
+    """
+    print("---NODE: Execute Screener---")
+    strategy_key = state.get("selected_strategy_key")
+    if not strategy_key or strategy_key not in SCREENER_STRATEGIES:
+        return {"error_message": "An invalid or no strategy was selected."}
+
+    strategy = SCREENER_STRATEGIES[strategy_key]
+    print(f"Executing strategy: {strategy['name']}")
+    
+    # --- MORE ROBUST SQL BUILDER USING THE IMPORTED MAP ---
+    table_aliases = {"company_equity": "ce", "company_finance_ratio": "cfr"}
+    
+    select_clauses, join_clauses, where_clauses = set(), set(), []
+    required_tables = set()
+
+    # Determine required tables and build clauses
+    for col, (op, val) in strategy["rules"].items():
+        table = COLUMN_TO_TABLE_MAP.get(col)
+        if not table:
+            print(f"Warning: Column '{col}' not found in COLUMN_TO_TABLE_MAP. Skipping.")
+            continue
+        
+        required_tables.add(table)
+        alias = table_aliases[table]
+        
+        select_clauses.add(f"{alias}.{col}")
+        where_clauses.append(f"{alias}.{col} {op} {val}")
+
+    # Build join statements and latest-data clauses
+    for table in required_tables:
+        alias = table_aliases[table]
+        join_clauses.add(f"JOIN {table} {alias} ON cm.fincode = {alias}.fincode")
+        where_clauses.append(f"{alias}.year_end = (SELECT MAX(year_end) FROM {table} WHERE fincode = cm.fincode)")
+
+    select_str = ", ".join(list(select_clauses))
+    join_str = " ".join(list(join_clauses))
+    where_str = " AND ".join(where_clauses)
+    
+    # Ensure there's always an ORDER BY, defaulting to mcap if company_equity is joined
+    order_by_clause = "ORDER BY ce.mcap DESC" if "company_equity" in required_tables else ""
+
+    full_query = f"SELECT cm.compname, {select_str} FROM company_master cm {join_str} WHERE {where_str} {order_by_clause} LIMIT 10"
+
+    print(f"Generated Screener SQL: {full_query}")
+    
+    async_engine_instance = create_async_engine(ASYNC_DATABASE_URL, pool_recycle=3600)
+    try:
+        async with async_engine_instance.connect() as connection:
+            result = await connection.execute(text(full_query))
+            rows = result.mappings().all()
+        
+        existing_results = json.loads(state["query_results"]["recommendation"])
+        existing_results.update({
+            "strategy_name": strategy["name"],
+            "stocks": [dict(row) for row in rows]
+        })
+        return {"query_results": {"recommendation": json.dumps(existing_results, default=str)}}
+    except Exception as e:
+        traceback.print_exc()
+        return {"error_message": f"I encountered an error while searching for stocks with the selected strategy. It's possible the required data is not available for this combination. Error: {e!r}"}
+    finally:
+        await async_engine_instance.dispose()
 
 async def execute_shareholding_pattern_node(state: FundamentalsAgentState) -> Dict:
     """
@@ -824,18 +920,18 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
     
     extraction = state["extraction"]
 
+    if extraction.is_recommendation_query:
+        print("Routing to: Recommendation Path")
+        return "recommendation_path"
     if extraction.is_shareholding_query:
         print("Routing to: Shareholding Pattern Tool")
         return "shareholding_path"
-
     if extraction.is_health_checklist_query:
         print("Routing to: Health Checklist Tool")
         return "health_check_path"
-    
     if extraction.is_multi_metric_query:
         print("Routing to: Multi-Metric Parallel Path")
         return "multi_metric_path"
-
     if extraction.is_database_required:
         print("Routing to: RAG Path for Specific Metrics")
         return "rag_path"
@@ -847,6 +943,8 @@ graph_builder = StateGraph(FundamentalsAgentState)
 
 # Add all nodes, including our new one
 graph_builder.add_node("extract", extract_node)
+graph_builder.add_node("select_strategy", select_strategy_node)
+graph_builder.add_node("execute_screener", execute_screener_node)
 graph_builder.add_node("execute_shareholding_pattern", execute_shareholding_pattern_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
@@ -865,6 +963,7 @@ graph_builder.add_conditional_edges(
     "extract",
     route_after_extraction,
     {
+        "recommendation_path": "select_strategy", 
         "shareholding_path": "execute_shareholding_pattern", # NEW ROUTE
         "health_check_path": "execute_health_checklist", 
         "multi_metric_path": "execute_multi_metric", 
@@ -873,6 +972,9 @@ graph_builder.add_conditional_edges(
         "end": END
     }
 )
+
+graph_builder.add_edge("select_strategy", "execute_screener")
+graph_builder.add_edge("execute_screener", "compose_answer")
 
 graph_builder.add_edge("execute_shareholding_pattern", "compose_answer")
 

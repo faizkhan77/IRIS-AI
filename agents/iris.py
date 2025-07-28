@@ -36,6 +36,7 @@ class IrisRoute(str, Enum):
     CLARIFICATION = "clarification"
     OUT_OF_DOMAIN = "out_of_domain" # For non-financial questions
     GENERAL = "general" # For greetings
+    RECOMMENDATION = "recommendation"
 
 # --- Pydantic & State Definitions ---
 class SupervisorDecision(BaseModel):
@@ -107,33 +108,37 @@ SUPERVISOR_PROMPT_TEMPLATE = """
 
     **--- You MUST follow this logic in this exact order: ---**
 
-    **1. Answer to Clarification Check (Highest Priority):**
+    **1. **Recommendation & Screener Check:**
+        - Is the user asking for a **recommendation**, **suggestion**, or a **list of stocks based on criteria**? (e.g., "recommend me stocks," "top 5 stocks by P/E," "best stocks for beginners").
+        - If YES, route to **`recommendation`**. This is a high-priority task.
+    
+    **2. Answer to Clarification Check (Highest Priority):**
         - Was the ASSISTANT's last message a question? (e.g., "Which company?").
         - Does the User's Current Query look like a direct ANSWER to that question? (e.g., "Tata Motors").
         - If YES to both, find the user's *original question* from before the clarification and determine the route based on THAT intent. For example, if the original question was "What are the fundamentals for it?" and the user now says "Tata Motors", the correct route is `fundamentals`.
 
-    **2. Long-Term Memory (LTM) Check:**
+    **3. Long-Term Memory (LTM) Check:**
         - Is the user **TELLING ME** a new preference to remember? (e.g., "My favorite stock is...", "I prefer..."). If YES, route to **`save_ltm`**.
         - Is the user's primary goal to **RECALL** a saved preference? (e.g., "What is my favorite stock?", "Remind me which indicators I like?"). If YES, route to **`load_ltm`**.
         - **IMPORTANT:** If the user wants to **APPLY** a known preference to a new task (e.g., "Analyze xyz based on my favorite indicators"), DO NOT route to `load_ltm`.
 
-    **3. Contextual Follow-up Check:**
+    **4. Contextual Follow-up Check:**
         - If not an answer to clarification, does the query refer to a previous turn with pronouns or vague references (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
         - If YES, identify the topic from the history (e.g., "Financial Performance of x") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`).
 
-    **4. Specific Fact Check:**
+    **5. Specific Fact Check:**
         - Is the user asking for specific **shareholding details** (promoter, public, DII, FII)? Route to **`fundamentals`**.
         - Is the user asking for other specific **fundamental facts** (P/E, market cap, net sales, revenue)? Route to **`fundamentals`**.
         - Is the user asking for specific **technical facts** (RSI, MACD, moving averages)? Route to **`technicals`**.
         - Is the user asking about **news, public mood, or headlines**? Route to **`sentiment`**.
 
-    **5. Broad Opinion Check:**
+    **6. Broad Opinion Check:**
         - Is the user asking for a broad opinion (e.g., "Should I buy/sell/hold...?", "Is it a good buy?") without specifying a method? If YES, route to **`cross_agent_reasoning`**.
 
-    **6. Vague Query Check:**
+    **7. Vague Query Check:**
         - Is the query just a company name (e.g., "Reliance", "Infosys") with no other context? If YES, route to **`clarification`**.
 
-    **7. Catch-Alls:**
+    **8. Catch-Alls:**
         - Is it a simple greeting or closing? Route to **`general`**.
         - Is it about something other than finance? Route to **`out_of_domain`**.
 
@@ -321,6 +326,7 @@ class IrisOrchestrator:
         graph_builder.add_node(IrisRoute.SAVE_LTM.value, self.save_ltm_node)
         graph_builder.add_node(IrisRoute.LOAD_LTM.value, self.load_ltm_and_respond_node)
         graph_builder.add_node(IrisRoute.FUNDAMENTALS.value, self.call_agent_node)
+        graph_builder.add_node(IrisRoute.RECOMMENDATION.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.TECHNICALS.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.SENTIMENT.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.CROSS_AGENT_REASONING.value, self.staggered_parallel_agent_call_node)
@@ -340,6 +346,7 @@ class IrisOrchestrator:
         agent_routes_that_need_rewrite = {
             IrisRoute.FUNDAMENTALS, IrisRoute.TECHNICALS,
             IrisRoute.SENTIMENT, IrisRoute.CROSS_AGENT_REASONING,
+            IrisRoute.RECOMMENDATION
         }
 
         def route_from_supervisor(state: IrisState):
@@ -648,6 +655,7 @@ class IrisOrchestrator:
         
         agent_map = {
             IrisRoute.FUNDAMENTALS: fundamentals_app_instance,
+            IrisRoute.RECOMMENDATION: fundamentals_app_instance,
             IrisRoute.SENTIMENT: sentiment_app_instance,
             IrisRoute.TECHNICALS: technical_app_instance
         }
@@ -944,4 +952,3 @@ if __name__ == "__main__":
     asyncio.run(run_test_session())
 
 
-    
