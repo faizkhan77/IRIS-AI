@@ -99,45 +99,71 @@ LTM_UPDATE_PROMPT_TEMPLATE = """
 """
 
 SUPERVISOR_PROMPT_TEMPLATE = """
-    You are IRIS, a master AI supervisor. Your job is to analyze the user's raw query and conversation history to determine their true INTENT and route them to the correct tool. You must be extremely precise.
+    You are a precise, efficient routing AI. Your sole purpose is to analyze the user's query and conversation history and output a single, valid JSON object to route the query to the correct tool.
 
     **--- Conversation History (for context) ---**
     {chat_history}
     - **User's Current Raw Query:** "{user_input}"
 
-    **Strict Rules:**
-    1.  **Identify New Subject First:** Always identify the primary subject and intent from the user's **latest input** (e.g., "Analyze Reliance", "What is the P/E of INFY?"). This is your anchor.
-    2.  **Resolve References:** If the latest input contains pronouns or references (like 'them', 'that', 'it'), use the chat history to resolve **only those specific references**.
-    3.  **Combine and Reconstruct:** Your primary goal is to **merge** the resolved references from the history with the new subject and intent from the latest input to form a single, complete, new query.
-    4.  **Preserve Intent:** If the original input is a question, the output must be a question.
-    5.  **Be Concise:** Your entire output must be ONLY the final, rewritten query.
-    6.  **No-Op:** If the user's input is already a complete, standalone query, return it EXACTLY AS IS.
+    **--- You MUST follow this logic in this exact order: ---**
 
-    **--- YOUR THOUGHT PROCESS (You MUST follow this logic): ---**
+    **1. Answer to Clarification Check (Highest Priority):**
+        - Was the ASSISTANT's last message a question? (e.g., "Which company?").
+        - Does the User's Current Query look like a direct ANSWER to that question? (e.g., "Tata Motors").
+        - If YES to both, find the user's *original question* from before the clarification and determine the route based on THAT intent. For example, if the original question was "What are the fundamentals for it?" and the user now says "Tata Motors", the correct route is `fundamentals`.
 
-    1.  **Long-Term Memory (LTM) Check - HIGHEST PRIORITY:**
+    **2. Long-Term Memory (LTM) Check:**
         - Is the user **TELLING ME** a new preference to remember? (e.g., "My favorite stock is...", "I prefer..."). If YES, route to **`save_ltm`**.
         - Is the user's primary goal to **RECALL** a saved preference? (e.g., "What is my favorite stock?", "Remind me which indicators I like?"). If YES, route to **`load_ltm`**.
-        - **IMPORTANT:** If the user wants to **APPLY** a known preference to a new task (e.g., "Analyze GOOGL based on my favorite indicators"), DO NOT route to `load_ltm`. Instead, proceed to the other checks below (this query should likely go to `technicals` or `cross_agent_reasoning`).
+        - **IMPORTANT:** If the user wants to **APPLY** a known preference to a new task (e.g., "Analyze xyz based on my favorite indicators"), DO NOT route to `load_ltm`.
 
-    2.  **Contextual Follow-up Check:**
-        - Does the query refer to a previous turn (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
-        - If YES, identify the topic from the history (e.g., "Financial Performance of Reliance") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`). This is a critical task.
+    **3. Contextual Follow-up Check:**
+        - If not an answer to clarification, does the query refer to a previous turn with pronouns or vague references (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
+        - If YES, identify the topic from the history (e.g., "Financial Performance of x") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`).
 
-    3.  **Vague Query Check:**
-        - Is the query just a company name (e.g., "Reliance", "Infosys")? If YES, route to **`clarification`**.
+    **4. Specific Fact Check:**
+        - Is the user asking for specific **shareholding details** (promoter, public, DII, FII)? Route to **`fundamentals`**.
+        - Is the user asking for other specific **fundamental facts** (P/E, market cap, net sales, revenue)? Route to **`fundamentals`**.
+        - Is the user asking for specific **technical facts** (RSI, MACD, moving averages)? Route to **`technicals`**.
+        - Is the user asking about **news, public mood, or headlines**? Route to **`sentiment`**.
 
-    4.  **Broad Opinion Check:**
+    **5. Broad Opinion Check:**
         - Is the user asking for a broad opinion (e.g., "Should I buy/sell/hold...?", "Is it a good buy?") without specifying a method? If YES, route to **`cross_agent_reasoning`**.
 
-    5.  **Specific Fact Check:**
-        - Is the user asking for a specific technical fact (RSI, MACD)? Route to **`technicals`**.
-        - Is the user asking for a specific fundamental fact (P/E, market cap)? Route to **`fundamentals`**.
-        - Is the user asking about news or public mood? Route to **`sentiment`**.
+    **6. Vague Query Check:**
+        - Is the query just a company name (e.g., "Reliance", "Infosys") with no other context? If YES, route to **`clarification`**.
 
-    6.  **Catch-Alls:**
+    **7. Catch-Alls:**
         - Is it a simple greeting or closing? Route to **`general`**.
         - Is it about something other than finance? Route to **`out_of_domain`**.
+
+
+    **--- EXAMPLES of correct routing ---**
+
+    **Example 1: Answer to Clarification**
+    - History: "assistant: Which company are you asking about?"
+    - User's Current Raw Query: "HDFC Bank"
+    - Your Output JSON: {{"route": "fundamentals", "reasoning": "User answered clarification. The original intent was to get a fundamental fact."}}
+
+    **Example 2: Specific Standalone Question**
+    - History: ""
+    - User's Current Raw Query: "what are the shareholding patterns for Titan?"
+    - Your Output JSON: {{"route": "fundamentals", "reasoning": "User is asking for a specific fundamental fact (shareholding)."}}
+
+    **Example 3: Vague Initial Query**
+    - History: ""
+    - User's Current Raw Query: "Reliance"
+    - Your Output JSON: {{"route": "clarification", "reasoning": "User provided only a company name with no specific question."}}
+
+    **Example 4: Simple Greeting**
+    - History: ""
+    - User's Current Raw Query: "hello there"
+    - Your Output JSON: {{"route": "general", "reasoning": "User provided a simple greeting."}}
+
+    **--- OUTPUT INSTRUCTIONS ---**
+    YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT AND NOTHING ELSE.
+    DO NOT INCLUDE ANY OTHER TEXT, EXPLANATIONS, OR MARKDOWN FORMATTING LIKE ```json.
+    JUST THE JSON OBJECT.
 
     ---
     Now, apply this thought process to the user's raw query and provide your output as a single, valid JSON object.
@@ -337,30 +363,52 @@ class IrisOrchestrator:
         graph_builder.add_conditional_edges("rewrite_for_agent", route_after_rewrite,
             {route.value: route.value for route in agent_routes_that_need_rewrite})
         
-        # --- NEW: Decision node to either format or skip formatting ---
-        def route_to_formatter_or_log(state: IrisState):
+        # --- MODIFIED: More intelligent decision logic for formatting ---
+        
+        # Define which routes produce simple text that should NOT be formatted
+        routes_that_bypass_formatter = {
+            IrisRoute.GENERAL.value,
+            IrisRoute.CLARIFICATION.value,
+            IrisRoute.OUT_OF_DOMAIN.value,
+            IrisRoute.SAVE_LTM.value,
+            IrisRoute.LOAD_LTM.value,
+        }
+
+        def decide_on_formatting(state: IrisState) -> str:
+            """
+            Checks the supervisor's original routing decision and response type
+            to determine if heavy markdown formatting is needed.
+            """
+            route = state["supervisor_decision"].route
             final_response = state.get("final_response")
-            # If the response is a dict, it has UI components. Skip formatting.
+            
+            # Case 1: The response is a structured dict (e.g., for a chart). Skip formatting.
             if isinstance(final_response, dict):
-                print("--- ROUTING: Structured response found. Skipping formatter. ---")
+                print(f"--- ROUTING: Structured response found. Bypassing formatter. ---")
                 return "log_to_db_and_finalize"
-            # Otherwise, it's a simple string that needs formatting.
+
+            # Case 2: The original intent was for a simple, conversational response. Skip formatting.
+            if route.value in routes_that_bypass_formatter:
+                print(f"--- ROUTING: Bypassing formatter for simple route '{route.value}'. ---")
+                return "log_to_db_and_finalize"
+
+            # Case 3: It's a complex response from an analysis agent. Send to formatter.
             else:
-                print("--- ROUTING: Simple response found. Sending to formatter. ---")
+                print(f"--- ROUTING: Sending to formatter for complex route '{route.value}'. ---")
                 return "format_and_stream"
 
-        # Define the nodes that produce a final response that might need formatting
-        nodes_before_formatting = [
+        # Define all nodes that produce a final response that needs a formatting decision
+        nodes_before_decision = [
             IrisRoute.FUNDAMENTALS.value, IrisRoute.TECHNICALS.value, IrisRoute.SENTIMENT.value,
             IrisRoute.SAVE_LTM.value, IrisRoute.LOAD_LTM.value, IrisRoute.CLARIFICATION.value,
             IrisRoute.GENERAL.value, IrisRoute.OUT_OF_DOMAIN.value, "synthesize_results"
         ]
 
-        # Route all these nodes to our new decision point
-        for node in nodes_before_formatting:
+        # Route all these nodes to our new, smarter decision point
+        for node_name in nodes_before_decision:
             graph_builder.add_conditional_edges(
-                node,
-                route_to_formatter_or_log,
+                node_name,
+                decide_on_formatting,
                 {
                     "format_and_stream": "format_and_stream",
                     "log_to_db_and_finalize": "log_to_db_and_finalize"
@@ -656,7 +704,7 @@ class IrisOrchestrator:
              return {"final_response": response_from_agent}
         
         formatting_prompt = PromptTemplate.from_template(
-       """
+        """
             You are IRIS, a financial assistant AI. Your final and most important job is to take an internal data summary and format it into a final, user-facing response. The response must be perfectly formatted as markdown AND be a direct, conversational answer to the user's original question.
 
             **User's Original Question:**
@@ -891,6 +939,9 @@ if __name__ == "__main__":
                 print("IRIS graph saved to graphs/iris_v1.png")
             except Exception as e:
                 print(f"Could not generate IRIS graph visualization: {e}")
-                print("Please ensure you have run: pip install 'langchain[graphviz]' playwright && playwright install")
+            
 
     asyncio.run(run_test_session())
+
+
+    
