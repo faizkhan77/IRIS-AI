@@ -4,7 +4,7 @@ from langgraph.graph import START, StateGraph, END
 from typing import TypedDict, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from dotenv import load_dotenv
+from dotenv import load_dotenv 
 import json
 from sqlalchemy import text
 import traceback
