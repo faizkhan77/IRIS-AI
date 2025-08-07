@@ -5,7 +5,7 @@ import uuid
 import asyncio
 import traceback
 from enum import Enum
-from typing import TypedDict, Annotated, List as TypingList, Dict, Any, Optional
+from typing import TypedDict, Annotated, List as TypingList, Dict, Any, Optional, List
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, RootModel 
@@ -23,6 +23,9 @@ from .technicals_agent import app as technical_app_instance
 from . import db_ltm
 from .db_ltm import update_session_summary
 
+from .db_ltm import find_matching_companies
+import re
+
 load_dotenv()
 
 # --- Configuration & Enums ---
@@ -37,12 +40,14 @@ class IrisRoute(str, Enum):
     OUT_OF_DOMAIN = "out_of_domain" # For non-financial questions
     GENERAL = "general" # For greetings
     RECOMMENDATION = "recommendation"
-    
+    PERFORMANCE_ANALYSIS = "performance_analysis" 
 
 # --- Pydantic & State Definitions ---
 class SupervisorDecision(BaseModel):
     route: IrisRoute
     reasoning: str
+    time_period_years: Optional[int] = Field(None, description="The time period in years, if mentioned (e.g., '5 years').")
+    sector: Optional[str] = Field(None, description="The industry sector, if mentioned (e.g., 'Minerals sector').")
 
 class LtmSaveRequest(RootModel[Dict[str, Any]]):
     pass
@@ -53,10 +58,19 @@ class IrisState(TypedDict):
     db_user_id: Optional[int]
     db_session_id: Optional[int]
     user_input: str
-    final_response: Optional[str]
+    final_response: Optional[Any]
     full_chat_history: Annotated[TypingList[BaseMessage], lambda x, y: x + y]
     supervisor_decision: Optional[SupervisorDecision]
     sub_agent_outputs: Annotated[dict, lambda x, y: {**x, **y}]
+
+class ClarificationOption(BaseModel):
+    label: str = Field(description="The user-facing text for the button/option. Should be descriptive and may include emojis (e.g., '📊 Get Fundamental Analysis').")
+    query: str = Field(description="The self-contained query that will be sent back to the agent if the user clicks this option (e.g., 'Fundamental analysis of Reliance Industries').")
+
+# THIS IS THE NEW, CORRECT MODEL
+class LLMSuggestions(BaseModel):
+    """A model to represent the list of clarification options the LLM should generate."""
+    items: List[ClarificationOption] = Field(description="A list of suggested clarification options.")
 
 # --- Prompts ---
 
@@ -100,80 +114,73 @@ LTM_UPDATE_PROMPT_TEMPLATE = """
     Now, based on the provided preferences and the new request, generate the final JSON object.
 """
 
-SUPERVISOR_PROMPT_TEMPLATE = """
-    You are a precise, efficient routing AI. Your sole purpose is to analyze the user's query and conversation history and output a single, valid JSON object to route the query to the correct tool.
 
-    **--- Conversation History (for context) ---**
+# In agents/iris.py
+
+SUPERVISOR_PROMPT_TEMPLATE = """
+    You are an AI routing supervisor. Your sole purpose is to analyze the user's query and conversation history and output a single, valid JSON object to route the query to the correct tool.
+
+    **Conversation History (for context):**
     {chat_history}
     - **User's Current Raw Query:** "{user_input}"
 
-    **--- You MUST follow this logic in this exact order: ---**
+    **--- Tool Routing Logic ---**
 
-    **1. **Recommendation & Screener Check:**
-        - Is the user asking for a **recommendation**, **suggestion**, or a **list of stocks based on criteria**? (e.g., "recommend me stocks," "top 5 stocks by P/E," "best stocks for beginners").
-        - If YES, route to **`recommendation`**. This is a high-priority task.
-    
-    **2. Answer to Clarification Check (Highest Priority):**
-        - Was the ASSISTANT's last message a question? (e.g., "Which company?").
-        - Does the User's Current Query look like a direct ANSWER to that question? (e.g., "Tata Motors").
-        - If YES to both, find the user's *original question* from before the clarification and determine the route based on THAT intent. For example, if the original question was "What are the fundamentals for it?" and the user now says "Tata Motors", the correct route is `fundamentals`.
+    Based on the user's query, determine the most appropriate tool from the following options. Your response MUST be a single JSON object.
 
-    **3. Long-Term Memory (LTM) Check:**
-        - Is the user **TELLING ME** a new preference to remember? (e.g., "My favorite stock is...", "I prefer..."). If YES, route to **`save_ltm`**.
+    1.  **`performance_analysis`**:
+        - Use for queries asking for a **LIST or RANKING** of stocks based on **HISTORICAL PERFORMANCE** over a **TIME PERIOD**.
+        - Keywords: "top performing", "most consistent", "best stocks over [time]".
+        - Must extract `time_period_years` and `sector`.
+
+    2.  **`recommendation`**:
+        - Use for queries asking for a **general recommendation** based on an investment style or theme.
+        - Keywords: "recommend", "suggest", "good stocks for".
+
+    3.  **`fundamentals`**:
+        - Use for queries asking for **specific, current fundamental data points** for one or more companies.
+        - Also use for **simple factual rankings** based on a single metric.
+        - Keywords: "market cap", "P/E ratio", "shareholding", "net sales", "top 5 by [metric]".
+
+    4.  **`technicals`**:
+        - Use for queries asking for **specific technical indicators** or the **historical technical performance of a SINGLE company**.
+        - Keywords: "RSI", "MACD", "technical analysis of [company]", "performance of [company]".
+
+    5.  **`sentiment`**:
+        - Use for queries about **news, headlines, or public mood**.
+        - Keywords: "sentiment", "news about", "market mood".
+
+    6.  **`cross_agent_reasoning`**:
+        - Use for broad, open-ended questions like **"should I buy/sell/hold [stock]?"** that require a synthesized opinion from multiple analysis types.
+
+    7.  Long-Term Memory (LTM) Check:**
+        - Is the user **TELLING ME** a new preference to remember? (e.g., "My favorite stock is...", "I prefer...", 'I am a xyz', 'I like xyz', 'I used to xyz..', etc). If YES, route to **`save_ltm`**.
         - Is the user's primary goal to **RECALL** a saved preference? (e.g., "What is my favorite stock?", "Remind me which indicators I like?"). If YES, route to **`load_ltm`**.
         - **IMPORTANT:** If the user wants to **APPLY** a known preference to a new task (e.g., "Analyze xyz based on my favorite indicators"), DO NOT route to `load_ltm`.
 
-    **4. Contextual Follow-up Check:**
-        - If not an answer to clarification, does the query refer to a previous turn with pronouns or vague references (e.g., "the first option", "tell me more about that", "what about its PE ratio?")?
-        - If YES, identify the topic from the history (e.g., "Financial Performance of x") and route to the appropriate agent (`fundamentals`, `technicals`, `sentiment`).
+    8.  **`clarification`**:
+        - Use ONLY when the query is extremely vague and contains just a company name with no other context (e.g., "Reliance").
 
-    **5. Specific Fact Check:**
-        - Is the user asking for specific **shareholding details** (promoter, public, DII, FII)? Route to **`fundamentals`**.
-        - Is the user asking for other specific **fundamental facts** (P/E, market cap, net sales, revenue)? Route to **`fundamentals`**.
-        - Is the user asking for specific **technical facts** (RSI, MACD, moving averages)? Route to **`technicals`**.
-        - Is the user asking about **news, public mood, or headlines**? Route to **`sentiment`**.
+    9.  **`general`**:
+        - Use for simple greetings, closings, or conversational filler (e.g., "hello", "thanks", "how are you?").
 
-    **6. Broad Opinion Check:**
-        - Is the user asking for a broad opinion (e.g., "Should I buy/sell/hold...?", "Is it a good buy?") without specifying a method? If YES, route to **`cross_agent_reasoning`**.
+    10. **`out_of_domain`**:
+        - Use for any query not related to finance or the stock market.
 
-    **7. Vague Query Check:**
-        - Is the query just a company name (e.g., "Reliance", "Infosys") with no other context? If YES, route to **`clarification`**.
+    **--- Contextual Follow-up Rule ---**
+    - If the user's query is a follow-up (e.g., "what about its P/E ratio?", "tell me more"), use the conversation history to understand the original topic (e.g., "Reliance Industries") and route to the appropriate tool (`fundamentals`, `technicals`, etc.).
 
-    **8. Catch-Alls:**
-        - Is it a simple greeting or closing? Route to **`general`**.
-        - Is it about something other than finance? Route to **`out_of_domain`**.
-
-
-    **--- EXAMPLES of correct routing ---**
-
-    **Example 1: Answer to Clarification**
-    - History: "assistant: Which company are you asking about?"
-    - User's Current Raw Query: "HDFC Bank"
-    - Your Output JSON: {{"route": "fundamentals", "reasoning": "User answered clarification. The original intent was to get a fundamental fact."}}
-
-    **Example 2: Specific Standalone Question**
-    - History: ""
-    - User's Current Raw Query: "what are the shareholding patterns for Titan?"
-    - Your Output JSON: {{"route": "fundamentals", "reasoning": "User is asking for a specific fundamental fact (shareholding)."}}
-
-    **Example 3: Vague Initial Query**
-    - History: ""
-    - User's Current Raw Query: "Reliance"
-    - Your Output JSON: {{"route": "clarification", "reasoning": "User provided only a company name with no specific question."}}
-
-    **Example 4: Simple Greeting**
-    - History: ""
-    - User's Current Raw Query: "hello there"
-    - Your Output JSON: {{"route": "general", "reasoning": "User provided a simple greeting."}}
 
     **--- OUTPUT INSTRUCTIONS ---**
-    YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT AND NOTHING ELSE.
-    DO NOT INCLUDE ANY OTHER TEXT, EXPLANATIONS, OR MARKDOWN FORMATTING LIKE ```json.
-    JUST THE JSON OBJECT.
+    - Your entire response MUST be ONLY the single, valid JSON object.
+    - Do NOT include any other text, explanations, or markdown formatting.
+    - JUST THE JSON.
 
     ---
-    Now, apply this thought process to the user's raw query and provide your output as a single, valid JSON object.
+    Now, apply this logic to the user's query and provide your output.
 """
+
+
 
 REWRITE_QUESTION_PROMPT = """
     You are an expert at creating self-contained, standalone queries for another AI.
@@ -275,6 +282,33 @@ SESSION_SUMMARY_PROMPT_TEMPLATE = """
 """
 
 
+SUPERVISOR_FALLBACK_PROMPT_TEMPLATE = """
+    You are an expert routing assistant. Your task is to analyze the user's query and the conversation history, then output the single most appropriate tool name from the provided list.
+
+    **--- Tool Routing Logic ---**
+
+    1.  **`clarification`**: Use this tool if and ONLY IF the user's query is just a company name without any other context (e.g., "reliance", "adani", "apple"). This is your HIGHEST PRIORITY. If a query is just a name, you MUST choose 'clarification'.
+
+    2.  **`fundamentals`**: Use for specific data points like "market cap of reliance".
+    3.  **`technicals`**: Use for technical indicators like "rsi of reliance".
+    4.  **`sentiment`**: Use for news or mood, like "sentiment for reliance".
+    5.  **`cross_agent_reasoning`**: Use for "should I buy reliance?".
+    
+    (Other tools: {other_route_names})
+
+    **--- Conversation History (for context) ---**
+    {chat_history}
+
+    **--- User's Current Query ---**
+    "{user_input}"
+
+    **--- INSTRUCTIONS ---**
+    -   Your entire output MUST BE only the single, most appropriate tool name from the list.
+    -   Do not add any explanation or other text.
+    -   Just the single word.
+"""
+
+
 # --- Helper Function for Rewriting Question ---
 async def _get_standalone_question(state: IrisState) -> str:
     """Uses chat history to rewrite a question to be self-contained."""
@@ -292,6 +326,7 @@ async def _get_standalone_question(state: IrisState) -> str:
 class IrisOrchestrator:
     def __init__(self, checkpointer):
         self.checkpointer = checkpointer
+        self.llm = groq_llm
         self.graph = self._build_graph()
         self.app = self.graph.compile(checkpointer=self.checkpointer)
 
@@ -322,12 +357,14 @@ class IrisOrchestrator:
         
         # --- Define all nodes (this part is unchanged) ---
         graph_builder.add_node("initialize_session", self.initialize_session_node)
+        graph_builder.add_node("pre_routing_classifier", self.pre_routing_classifier_node)
         graph_builder.add_node("supervisor_decide", self.supervisor_decide_node)
         graph_builder.add_node("rewrite_for_agent", self.rewrite_for_agent_node)
         graph_builder.add_node(IrisRoute.SAVE_LTM.value, self.save_ltm_node)
         graph_builder.add_node(IrisRoute.LOAD_LTM.value, self.load_ltm_and_respond_node)
         graph_builder.add_node(IrisRoute.FUNDAMENTALS.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.RECOMMENDATION.value, self.call_agent_node)
+        graph_builder.add_node(IrisRoute.PERFORMANCE_ANALYSIS.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.TECHNICALS.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.SENTIMENT.value, self.call_agent_node)
         graph_builder.add_node(IrisRoute.CROSS_AGENT_REASONING.value, self.staggered_parallel_agent_call_node)
@@ -335,19 +372,43 @@ class IrisOrchestrator:
         graph_builder.add_node(IrisRoute.GENERAL.value, self.general_node)
         graph_builder.add_node(IrisRoute.OUT_OF_DOMAIN.value, self.out_of_domain_node)
         graph_builder.add_node("synthesize_results", self.synthesize_results_node)
+        graph_builder.add_node("final_response_validator", self.final_response_validator_node)
         graph_builder.add_node("format_and_stream", self.format_and_stream_node)
         graph_builder.add_node("log_to_db_and_finalize", self.log_to_db_and_finalize_node)
         graph_builder.add_node("summarize_session", self.summarize_session_node)
         
         
-        # Entry point and supervisor routing are the same
         graph_builder.set_entry_point("initialize_session")
-        graph_builder.add_edge("initialize_session", "supervisor_decide")
+        graph_builder.add_edge("initialize_session", "pre_routing_classifier")
+
+        graph_builder.add_conditional_edges(
+            "pre_routing_classifier",
+            lambda state: (
+                state["supervisor_decision"].route.value
+                if state.get("supervisor_decision") and hasattr(state["supervisor_decision"], "route")
+                else "supervisor_decide"
+            ),
+            {
+                IrisRoute.FUNDAMENTALS.value: IrisRoute.FUNDAMENTALS.value,
+                IrisRoute.SENTIMENT.value: IrisRoute.SENTIMENT.value,
+                IrisRoute.TECHNICALS.value: IrisRoute.TECHNICALS.value,
+                IrisRoute.CROSS_AGENT_REASONING.value: IrisRoute.CROSS_AGENT_REASONING.value,
+                IrisRoute.PERFORMANCE_ANALYSIS.value: IrisRoute.PERFORMANCE_ANALYSIS.value,
+                IrisRoute.RECOMMENDATION.value: IrisRoute.RECOMMENDATION.value,
+                IrisRoute.GENERAL.value: IrisRoute.GENERAL.value,
+                IrisRoute.OUT_OF_DOMAIN.value: IrisRoute.OUT_OF_DOMAIN.value,
+                IrisRoute.SAVE_LTM.value: IrisRoute.SAVE_LTM.value,         # Optional but good to include
+                IrisRoute.LOAD_LTM.value: IrisRoute.LOAD_LTM.value,         # Optional but good to include
+                IrisRoute.CLARIFICATION.value: IrisRoute.CLARIFICATION.value,
+                "supervisor_decide": "supervisor_decide",  # fallback
+            }
+        )
+
 
         agent_routes_that_need_rewrite = {
             IrisRoute.FUNDAMENTALS, IrisRoute.TECHNICALS,
             IrisRoute.SENTIMENT, IrisRoute.CROSS_AGENT_REASONING,
-            IrisRoute.RECOMMENDATION
+            IrisRoute.RECOMMENDATION, IrisRoute.PERFORMANCE_ANALYSIS,
         }
 
         def route_from_supervisor(state: IrisState):
@@ -359,8 +420,7 @@ class IrisOrchestrator:
         graph_builder.add_conditional_edges("supervisor_decide", route_from_supervisor, {
             "rewrite_for_agent": "rewrite_for_agent",
             IrisRoute.SAVE_LTM.value: IrisRoute.SAVE_LTM.value,
-            IrisRoute.LOAD_LTM.value: IrisRoute.LOAD_LTM.value,
-            IrisRoute.CLARIFICATION.value: IrisRoute.CLARIFICATION.value,
+            IrisRoute.CLARIFICATION.value: IrisRoute.CLARIFICATION.value,  # <--- ADD THIS LINE
             IrisRoute.GENERAL.value: IrisRoute.GENERAL.value,
             IrisRoute.OUT_OF_DOMAIN.value: IrisRoute.OUT_OF_DOMAIN.value,
         })
@@ -407,10 +467,11 @@ class IrisOrchestrator:
 
         # Define all nodes that produce a final response that needs a formatting decision
         nodes_before_decision = [
-            IrisRoute.FUNDAMENTALS.value, IrisRoute.TECHNICALS.value, IrisRoute.SENTIMENT.value,
-            IrisRoute.SAVE_LTM.value, IrisRoute.LOAD_LTM.value, IrisRoute.CLARIFICATION.value,
-            IrisRoute.GENERAL.value, IrisRoute.OUT_OF_DOMAIN.value, "synthesize_results"
+            IrisRoute.SAVE_LTM.value, IrisRoute.LOAD_LTM.value,
+            IrisRoute.CLARIFICATION.value, IrisRoute.GENERAL.value,
+            IrisRoute.OUT_OF_DOMAIN.value
         ]
+
 
         # Route all these nodes to our new, smarter decision point
         for node_name in nodes_before_decision:
@@ -423,8 +484,29 @@ class IrisOrchestrator:
                 }
             )
 
+        # These nodes now go to validator first (if applicable)
+        nodes_before_validation = [
+            IrisRoute.FUNDAMENTALS.value, IrisRoute.TECHNICALS.value, IrisRoute.SENTIMENT.value,
+            IrisRoute.RECOMMENDATION.value, IrisRoute.PERFORMANCE_ANALYSIS.value
+        ]
+
+        for node_name in nodes_before_validation:
+            graph_builder.add_edge(node_name, "final_response_validator")
+
+        # After validation, apply formatting logic
+        graph_builder.add_conditional_edges(
+            "final_response_validator",
+            decide_on_formatting,
+            {
+                "format_and_stream": "format_and_stream",
+                "log_to_db_and_finalize": "log_to_db_and_finalize",
+            }
+        )
+
         # Cross-agent reasoning still goes to synthesis first
         graph_builder.add_edge(IrisRoute.CROSS_AGENT_REASONING.value, "synthesize_results")
+        graph_builder.add_edge("synthesize_results", "final_response_validator")
+
         
         # The output of the formatter ALWAYS goes to the logger
         graph_builder.add_edge("format_and_stream", "log_to_db_and_finalize")
@@ -446,59 +528,176 @@ class IrisOrchestrator:
         return graph_builder
 
     async def initialize_session_node(self, state: IrisState) -> Dict:
-        """
-        This node is now robust. It ensures user and session IDs are present
-        in the state on EVERY turn, fetching them from the DB if necessary.
-        This is the definitive fix for the state loss issue.
-        """
-        print("\n---NODE: Initialize or Verify Session---")
-        thread_id = state["thread_id"]
-        user_identifier = state["user_identifier"]
+            """
+            This node is now robust. It ensures user and session IDs are present
+            in the state on EVERY turn, fetching them from the DB if necessary,
+            AND it clears the supervisor decision from the previous turn.
+            """
+            print("\n---NODE: Initialize or Verify Session---")
+            thread_id = state["thread_id"]
+            user_identifier = state["user_identifier"]
 
-        # On every turn, try to fetch existing session details from DB using thread_id
-        existing_ids = await asyncio.to_thread(db_ltm.get_session_and_user_ids_by_thread, thread_id)
+            # On every turn, try to fetch existing session details from DB using thread_id
+            existing_ids = await asyncio.to_thread(db_ltm.get_session_and_user_ids_by_thread, thread_id)
 
-        if existing_ids:
-            # Session already exists in the database.
-            db_session_id, db_user_id = existing_ids
-            print(f"--- Session verified. UserID: {db_user_id}, SessionID: {db_session_id} ---")
+            if existing_ids:
+                # Session already exists in the database.
+                db_session_id, db_user_id = existing_ids
+                print(f"--- Session verified. UserID: {db_user_id}, SessionID: {db_session_id} ---")
+                
+                # --- THIS IS THE FIX ---
+                # On every turn, reset the previous decision and ensure IDs are set.
+                return {
+                    "db_user_id": db_user_id,
+                    "db_session_id": db_session_id,
+                    "supervisor_decision": None # Explicitly clear the decision
+                }
+            else:
+                # This is the very first turn for this thread_id.
+                print(f"--- First turn for thread {thread_id}. Creating new session in DB. ---")
+                db_user_id = await asyncio.to_thread(db_ltm.get_or_create_user, user_identifier)
+                db_session_id = await asyncio.to_thread(db_ltm.get_or_create_session, db_user_id, thread_id)
+                
+                print(f"--- New session created. UserID: {db_user_id}, SessionID: {db_session_id} ---")
+
+                # --- ALSO APPLY THE FIX HERE ---
+                # Initialize state for the very first turn.
+                return {
+                    "db_user_id": db_user_id,
+                    "db_session_id": db_session_id,
+                    "full_chat_history": [],
+                    "supervisor_decision": None # Explicitly initialize as None
+                }
+
+    async def pre_routing_classifier_node(self, state: IrisState) -> Dict:
+        print("---NODE: Pre-Routing Classifier (Keyword-Based)---")
+        user_input = state["user_input"].lower()
+
+        # Rule-based keyword mapping in order of PRIORITY
+        # Higher priority items should come first in this dictionary.
+        ROUTE_KEYWORDS = {
+            # --- HIGHEST PRIORITY: User is talking ABOUT their preferences ---
+            IrisRoute.SAVE_LTM: [
+                "my favorite", "i prefer", "i like", "remember this", "save my", 
+                "i am a", "save my preferences", "i mostly use", "i use rsi", 
+                "i mostly invest in"
+            ],
+            IrisRoute.LOAD_LTM: [
+                "what is my", "remind me", "what did i say", "recall", 
+                "do you remember", "what did i ask"
+            ],
+
+            # --- SECOND PRIORITY: High-confidence analytical commands ---
+            IrisRoute.TECHNICALS: [
+                "technical analysis", "rsi", "macd", "bollinger", "ema", "sma", "supertrend"
+            ],
+            IrisRoute.SENTIMENT: ["sentiment", "mood", "news", "headlines"],
+            IrisRoute.RECOMMENDATION: [
+                "what should i invest in", "stock recommendation", "suggest good stocks",
+                "any stocks to buy", "top stocks to invest", "recommend", "suggest"
+            ],
+            IrisRoute.PERFORMANCE_ANALYSIS: [
+                "top performing", "most consistent", "over the years", "best stocks in"
+            ],
+            IrisRoute.CROSS_AGENT_REASONING: [
+                "should i buy", "should i sell", "hold or sell", "is it a good time",
+                "good buy", "worth buying", "is it overpriced"
+            ],
             
-            # We return the IDs to ensure they are correctly set in the state for this turn,
-            # overwriting any potentially corrupted (None) values from a previous turn's state.
-            # We do NOT touch full_chat_history, allowing the accumulator to work.
-            return {
-                "db_user_id": db_user_id,
-                "db_session_id": db_session_id,
-            }
-        else:
-            # This is the very first turn for this thread_id.
-            # Create the user and session records.
-            print(f"--- First turn for thread {thread_id}. Creating new session in DB. ---")
-            db_user_id = await asyncio.to_thread(db_ltm.get_or_create_user, user_identifier)
-            db_session_id = await asyncio.to_thread(db_ltm.get_or_create_session, db_user_id, thread_id)
+            # --- THIRD PRIORITY: Fundamental is often a fallback for specific data queries ---
+            IrisRoute.FUNDAMENTALS: [
+                "market cap", "net sales", "p/e", "pe ratio", "shareholding", 
+                "profit", "valuation", "fundamental analysis"
+            ],
             
-            print(f"--- New session created. UserID: {db_user_id}, SessionID: {db_session_id} ---")
+            # --- LOWEST PRIORITY: Conversational / Out of Domain ---
+            IrisRoute.GENERAL: ["hi", "hello", "thanks", "who are you", "how are you"],
+            IrisRoute.OUT_OF_DOMAIN: ["weather", "movie", "football", "travel", "non finance"],
+        }
 
-            # On the first turn, we must initialize the history list
-            # and populate the state with the newly created IDs.
-            return {
-                "db_user_id": db_user_id,
-                "db_session_id": db_session_id,
-                "full_chat_history": []
-            }
+        for route, keywords in ROUTE_KEYWORDS.items():
+            # A simple check for any keyword in the input
+            if any(kw in user_input for kw in keywords):
+                # --- CRITICAL FIX: Ensure LTM intent isn't overridden by content keywords ---
+                # If we match a technical/fundamental keyword, we must double-check if the user
+                # was actually trying to SAVE a preference.
+                if route in [IrisRoute.TECHNICALS, IrisRoute.FUNDAMENTALS]:
+                    save_intent_present = any(kw in user_input for kw in ROUTE_KEYWORDS[IrisRoute.SAVE_LTM])
+                    if save_intent_present:
+                        print(f"⚠️ Keyword overlap detected. Prioritizing SAVE_LTM over {route.value}.")
+                        # Skip this rule and let the loop find the SAVE_LTM rule later.
+                        # Since SAVE_LTM is first, this will now work correctly.
+                        # This logic is a safety net in case the dict order isn't guaranteed.
+                        continue
+                
+                print(f"✅ High-confidence match: Routing to {route.value}")
+                return {"supervisor_decision": SupervisorDecision(route=route, reasoning=f"Keyword match for: {route.value}")}
+
+        print("⚠️ No high-confidence match. Falling back to LLM-based routing.")
+        return {}
 
     async def supervisor_decide_node(self, state: IrisState) -> Dict:
-        print("---NODE: Supervisor Decide---")
+        print("---NODE: Supervisor Decide (with Rule-Based Override)---")
+        user_input = state["user_input"]
         history_str = "\n".join([f"{m.type}: {m.content}" for m in state.get('full_chat_history', [])[-6:]])
-        prompt = SUPERVISOR_PROMPT_TEMPLATE.format(chat_history=history_str, user_input=state["user_input"])
-        structured_llm = groq_llm.with_structured_output(SupervisorDecision)
+        
+        # --- STAGE 1: Rule-Based Keyword Override (Guardrail) ---
+        # This provides deterministic routing for high-confidence queries.
+        
+        # Technical keywords are very specific and reliable.
+        technical_keywords = ["technical analysis", "rsi", "macd", "bollinger", "ema", "supertrend", "indicator"]
+        if any(kw in user_input.lower() for kw in technical_keywords):
+            print("--- Supervisor Override: Technical keyword detected. Forcing TECHNICALS route. ---")
+            return {"supervisor_decision": SupervisorDecision(
+                route=IrisRoute.TECHNICALS,
+                reasoning="Forced route due to presence of a specific technical keyword."
+            )}
+            
+        # Sentiment keywords
+        sentiment_keywords = ["sentiment", "news", "mood", "headlines"]
+        if any(kw in user_input.lower() for kw in sentiment_keywords):
+            print("--- Supervisor Override: Sentiment keyword detected. Forcing SENTIMENT route. ---")
+            return {"supervisor_decision": SupervisorDecision(
+                route=IrisRoute.SENTIMENT,
+                reasoning="Forced route due to presence of a sentiment-related keyword."
+            )}
+
+        # --- STAGE 2: LLM-Based Routing (for everything else) ---
+        # This part remains the same as our previous best version.
+        
+        prompt = SUPERVISOR_PROMPT_TEMPLATE.format(chat_history=history_str, user_input=user_input)
         try:
+            # Try structured call first
+            structured_llm = groq_llm.with_structured_output(SupervisorDecision)
             decision = await structured_llm.ainvoke(prompt)
-            print(f"Supervisor Decision: Route='{decision.route.value}', Reason='{decision.reasoning}'")
+            print(f"Supervisor Decision (Structured Success): Route='{decision.route.value}', Reason='{decision.reasoning}'")
             return {"supervisor_decision": decision}
         except Exception as e:
-            traceback.print_exc()
-            return {"supervisor_decision": SupervisorDecision(route=IrisRoute.CLARIFICATION, reasoning=f"Supervisor Error: {e}")}
+            print(f"--- SUPERVISOR structured call failed: {e}. Attempting smart fallback. ---")
+            try:
+                # Fallback to a smarter, non-structured call
+                other_routes = [r.value for r in IrisRoute if r.value not in ["clarification", "fundamentals", "technicals", "sentiment", "cross_agent_reasoning"]]
+                fallback_prompt = SUPERVISOR_FALLBACK_PROMPT_TEMPLATE.format(
+                    other_route_names=", ".join(other_routes),
+                    chat_history=history_str,
+                    user_input=user_input
+                )
+                fallback_response = await groq_llm_fast.ainvoke(fallback_prompt)
+                chosen_route_str = fallback_response.content.strip().lower().replace('"', '').replace('`', '')
+                chosen_route = IrisRoute(chosen_route_str)
+                print(f"--- Supervisor Decision (Fallback Success): Chose route: '{chosen_route.value}' ---")
+                return {"supervisor_decision": SupervisorDecision(
+                    route=chosen_route,
+                    reasoning=f"Smart fallback from structured output failure. LLM selected '{chosen_route_str}'."
+                )}
+            except (ValueError, Exception) as fallback_e:
+                # Ultimate safety net
+                print(f"--- SUPERVISOR fallback also failed: {fallback_e}. Defaulting to CLARIFICATION. ---")
+                traceback.print_exc()
+                return {"supervisor_decision": SupervisorDecision(
+                    route=IrisRoute.CLARIFICATION,
+                    reasoning="Ultimate fallback: Both structured and simple LLM routing failed."
+                )}
 
     async def rewrite_for_agent_node(self, state: IrisState) -> Dict:
         print("---NODE: Rewrite and Enrich Question for Agent---")
@@ -643,37 +842,39 @@ class IrisOrchestrator:
             traceback.print_exc()
             return {"final_response": f"Sorry, I had trouble retrieving your preferences. Error: {e}"}
 
-    async def call_agent_node(self, state: IrisState) -> Dict:
-        # Rewrite the question to be self-contained (this part is correct)
-        standalone_question = state["user_input"]
-        
-        route = state["supervisor_decision"].route
 
-        if route == IrisRoute.SENTIMENT:
-            payload = {"query": standalone_question}
-        else:
-            payload = {"question": standalone_question}
+    async def call_agent_node(self, state: IrisState) -> Dict:
+        standalone_question = state["user_input"]
+        route = state["supervisor_decision"].route
         
         agent_map = {
             IrisRoute.FUNDAMENTALS: fundamentals_app_instance,
             IrisRoute.RECOMMENDATION: fundamentals_app_instance,
+            IrisRoute.PERFORMANCE_ANALYSIS: fundamentals_app_instance,
             IrisRoute.SENTIMENT: sentiment_app_instance,
             IrisRoute.TECHNICALS: technical_app_instance
         }
+        
+        # --- FIX: Re-introduce the supervisor_decision into the payload ---
+        # The payload MUST contain all the keys expected by the sub-agent's entry point.
+        payload = {
+            "question": standalone_question,
+            "supervisor_decision": state["supervisor_decision"].model_dump() 
+        }
+
+        # Override for sentiment agent's specific input key
+        if route == IrisRoute.SENTIMENT:
+            payload = {"query": standalone_question}
+
         try:
-            # Sub-agents now receive a payload with the correct key
             print(f"--- Calling {route.name} agent with payload: {payload} ---")
-            result_state = await agent_map[route].ainvoke(payload)
-            
-            # --- MODIFIED: Pass the entire final_answer object (str OR dict) ---
+            agent_to_call = agent_map[route]
+            result_state = await agent_to_call.ainvoke(payload)
             response = result_state.get("final_answer")
             
-            if response:
-                return {"final_response": response}
-            else:
-                return {"final_response": f"The {route.name.title()} agent could not find an answer."}
-
-        except Exception as e: 
+            return {"final_response": response or f"The {route.name.title()} agent could not find an answer."}
+        except Exception as e:
+            traceback.print_exc()
             return {"final_response": f"The {route.name.title()} agent encountered an error: {e!r}"}
 
     async def synthesize_results_node(self, state: IrisState) -> Dict:
@@ -681,11 +882,123 @@ class IrisOrchestrator:
         response = await groq_llm.ainvoke(prompt)
         return {"final_response": response.content}
 
+
     async def clarification_node(self, state: IrisState) -> Dict:
-        prompt = CLARIFICATION_PROMPT_TEMPLATE.format(user_input=state["user_input"])
-        response = await groq_llm_fast.ainvoke(prompt)
-        return {"final_response": response.content}
-    
+            print("---NODE: Smart Clarification (State-Aware v6, Structured Output)---")
+            user_input = state["user_input"].strip()
+            history = state.get("full_chat_history", [])
+            
+            last_assistant_message = ""
+            if len(history) > 1 and history[-1].type == 'ai':
+                last_assistant_message = history[-1].content
+            elif len(history) > 2 and history[-2].type == 'ai':
+                last_assistant_message = history[-2].content
+
+            # --- STATE 1 & 2: These are deterministic and don't need the LLM. They remain unchanged. ---
+            if "Please select one" in last_assistant_message:
+                # (Your logic for handling a selected company is correct and stays here)
+                print(f"Context: User selected a company ('{user_input}'). Offering actions.")
+                proper_company_name_list = await asyncio.to_thread(find_matching_companies, user_input, limit=1)
+                proper_company_name = proper_company_name_list[0] if proper_company_name_list else user_input
+                action_options = [
+                    {"label": "📊 Fundamental Analysis", "query": f"Fundamental analysis of {proper_company_name}"},
+                    {"label": "📈 Technical Analysis", "query": f"Technical analysis of {proper_company_name}"},
+                    {"label": "📰 Latest News & Sentiment", "query": f"Latest news sentiment for {proper_company_name}"},
+                    {"label": "📋 Shareholding Pattern", "query": f"Shareholding pattern of {proper_company_name}"}
+                ]
+                return {"final_response": {
+                    "text_response": f"What information would you like for **{proper_company_name}**?",
+                    "ui_components": [{"type": "clarification_options", "title": "Suggested Analyses", "options": action_options}]
+                }}
+
+            matching_companies = await asyncio.to_thread(find_matching_companies, user_input)
+            if matching_companies:
+                # (Your logic for offering company choices is correct and stays here)
+                if len(matching_companies) == 1 and matching_companies[0].lower() == user_input.lower():
+                    # ... same as before ...
+                    action_options = [
+                        {"label": "📊 Fundamental Analysis", "query": f"Fundamental analysis of {user_input}"},
+                        {"label": "📈 Technical Analysis", "query": f"Technical analysis of {user_input}"},
+                        {"label": "📰 Latest News & Sentiment", "query": f"Latest news sentiment for {user_input}"},
+                        {"label": "📋 Shareholding Pattern", "query": f"Shareholding pattern of {user_input}"}
+                    ]
+                    return {"final_response": {
+                        "text_response": f"What information would you like for **{user_input}**?",
+                        "ui_components": [{"type": "clarification_options", "title": "Suggested Analyses", "options": action_options}]
+                    }}
+                options = [{"label": name, "query": name} for name in matching_companies]
+                return {"final_response": {
+                    "text_response": f"By `{user_input}`, what do you mean? Please select one:",
+                    "ui_components": [{"type": "clarification_options", "title": "Matching Companies", "options": options}]
+                }}
+
+            # --- STATE 3: Fallback using RELIABLE structured output ---
+            print(f"Query '{user_input}' is vague and no companies were found. Using LLM for structured clarification.")
+            
+            LLM_SUGGESTION_PROMPT = """
+            You are IRIS, a helpful financial assistant. A user has provided a vague query. Your goal is to generate a list of 3-4 concrete, actionable suggestions that showcase your main capabilities.
+
+            **User's Vague Query:** "{user_input}"
+            
+            **CRITICAL INSTRUCTIONS:**
+            1.  Your entire output must be a valid JSON object matching the `LLMSuggestions` schema, with a root key "items" containing a list of objects.
+            2.  Each object must have a "label" and a "query".
+            3.  The "label" should be a user-friendly action (e.g., "📊 Get a fundamental analysis").
+            4.  **MOST IMPORTANTLY:** The "query" for each suggestion MUST be a simple, unique, keyword-based intent string. It should start with `intent_clarify_`. This tells the system what the user wants to do next. Do NOT make the query a full question.
+            
+            **Example Output:**
+            ```json
+            {{
+              "items": [
+                {{
+                  "label": "📊 Get a fundamental analysis",
+                  "query": "intent_clarify_fundamentals"
+                }},
+                {{
+                  "label": "📈 See a technical chart",
+                  "query": "intent_clarify_technicals"
+                }},
+                {{
+                  "label": "🏆 Find top performing stocks",
+                  "query": "intent_clarify_performance"
+                }},
+                {{
+                  "label": "💡 Get a stock recommendation",
+                  "query": "intent_clarify_recommendation"
+                }}
+              ]
+            }}
+            ```
+            
+            Now, generate the JSON object for the user's vague query, following all instructions.
+        """
+           
+
+            prompt = LLM_SUGGESTION_PROMPT.format(user_input=user_input)
+
+            try:
+                # This is the key change: we bind the Pydantic model to the LLM call.
+                structured_llm = groq_llm_fast.with_structured_output(LLMSuggestions)
+                
+                # The result is now a Pydantic model instance, not a raw string.
+                response_model = await structured_llm.ainvoke(prompt)
+                
+                # We access the list of options via .root and convert to dict for JSON serialization
+                llm_options = [opt.model_dump() for opt in response_model.items]
+
+                # Now, we wrap this guaranteed-to-be-correct list in our response structure.
+                return {"final_response": {
+                    "text_response": "I'm not sure how to help with that. Here are some things I can do:",
+                    "ui_components": [{"type": "vertical_suggestions", "title": "Perhaps you meant...", "options": llm_options}]
+                }}
+            except Exception as e:
+                # This block now only runs if the structured call itself fails, which is much rarer.
+                print(f"--- Structured LLM suggestion generation failed: {e}. Falling back to simple text. ---")
+                traceback.print_exc()
+                fallback_prompt = CLARIFICATION_PROMPT_TEMPLATE.format(user_input=user_input)
+                fallback_response = await groq_llm_fast.ainvoke(fallback_prompt)
+                return {"final_response": fallback_response.content}
+
     async def out_of_domain_node(self, state: IrisState) -> Dict:
         return {"final_response": "I am IRIS, an AI financial analyst. I can only answer questions related to the stock market and financial data."}
 
@@ -694,6 +1007,38 @@ class IrisOrchestrator:
         prompt = GENERAL_PROMPT_TEMPLATE.format(chat_history=history_str, user_input=state["user_input"])
         response = await groq_llm_fast.ainvoke(prompt)
         return {"final_response": response.content}
+
+    async def final_response_validator_node(self, state: IrisState) -> IrisState:
+            response = state.get("final_response")
+            user_query = state.get("user_input")
+
+            if not response:
+                return state
+
+            # Check if the response is a string and contains verbose patterns
+            if isinstance(response, str) and (
+                "step 1" in response.lower() or
+                "step 2" in response.lower() or
+                "the final answer is:" in response.lower()
+            ):
+                print("⚠️ Final response looks verbose. Rewriting...")
+                
+                # --- THIS IS THE CORRECTED CODE ---
+                rewriter_prompt = f"""The user asked: "{user_query}"
+
+    Below is a very verbose explanation. Return a clean response that is a direct answer to the user's question. Eliminate step-by-step formatting.
+
+    {response}
+    """
+                # Use the module-level groq_llm and the async ainvoke method
+                rewriter_response = await groq_llm.ainvoke(rewriter_prompt)
+                
+                # The output of .ainvoke() is a message object, so we access its content
+                state["final_response"] = rewriter_response.content.strip()
+                # --- END OF CORRECTED CODE ---
+                
+            return state
+
 
     async def format_and_stream_node(self, state: IrisState):
         """
@@ -815,53 +1160,60 @@ class IrisOrchestrator:
             }
 
     async def staggered_parallel_agent_call_node(self, state: IrisState) -> Dict:
-        # Rewrite the question ONCE (this part is correct)
+        """
+        This node now intelligently constructs the perfect payload for each sub-agent
+        it calls in parallel during a cross-agent reasoning task.
+        """
         standalone_question = state["user_input"]
-
-        # --- NEW STEP: Extract the primary entity from the question ---
-        # This gives us a clean entity name to pass to all agents.
+        
+        # 1. Extract the entity name. This is reliable and necessary for all agents.
         entity_extractor_prompt = f"From the following user question, extract the single primary company name or stock symbol. Question: \"{standalone_question}\""
         entity_response = await groq_llm_fast.ainvoke(entity_extractor_prompt)
-        entity_name = entity_response.content.strip()
+        entity_name = entity_response.content.strip().strip('"')
         print(f"--- Extracted entity for parallel call: '{entity_name}' ---")
         
         sub_agent_outputs = {}
 
-        # Fundamentals and Technicals take 'question'
-        try:
-            print(f"--- Calling parallel fundamentals agent ---")
-            payload = {"question": standalone_question}
-            result = await fundamentals_app_instance.ainvoke(payload)
-            sub_agent_outputs["fundamentals"] = result.get("final_answer", "No response.")
-        except Exception as e: 
-            sub_agent_outputs["fundamentals"] = f"Analyst error: {e!r}"
+        # 2. Define the concurrent tasks, each with a perfectly crafted payload.
+        async def call_funda():
+            try:
+                print(f"--- Calling parallel fundamentals agent (for health check) ---")
+                # Create a synthetic but valid payload. This forces the agent down its
+                # 'health_checklist_query' path without needing a second LLM extraction.
+                payload = {
+                    "question": f"Fundamental analysis of {entity_name}",
+                    "supervisor_decision": {"route": "fundamentals"}, # Satisfies the entry point
+                }
+                result = await fundamentals_app_instance.ainvoke(payload)
+                final_answer = result.get("final_answer", {})
+                sub_agent_outputs["fundamentals"] = final_answer.get("text_response", "Unable to retrieve fundamental data.")
+            except Exception as e: 
+                sub_agent_outputs["fundamentals"] = f"Fundamental analyst error: {e!r}"
 
-        await asyncio.sleep(1.0) # Stagger
+        async def call_tech():
+            try:
+                print(f"--- Calling parallel technicals agent ---")
+                # The technicals agent is smart enough to infer its task from this question.
+                payload = {"question": f"Technical analysis of {entity_name}"}
+                result = await technical_app_instance.ainvoke(payload)
+                sub_agent_outputs["technicals"] = result.get("final_answer", "No technical analysis available.")
+            except Exception as e: 
+                sub_agent_outputs["technicals"] = f"Technical analyst error: {e!r}"
 
-        try:
-            print(f"--- Calling parallel technicals agent ---")
-            payload = {"question": standalone_question}
-            result = await technical_app_instance.ainvoke(payload)
-            sub_agent_outputs["technicals"] = result.get("final_answer", "No response.")
-        except Exception as e: 
-            sub_agent_outputs["technicals"] = f"Analyst error: {e!r}"
+        async def call_sentiment():
+            try:
+                print(f"--- Calling parallel sentiment agent ---")
+                # The sentiment agent is most reliable when given the entity name directly.
+                payload = {"query": standalone_question, "company_name": entity_name}
+                result = await sentiment_app_instance.ainvoke(payload)
+                sub_agent_outputs["sentiment"] = result.get("final_answer", "No sentiment data available.")
+            except Exception as e: 
+                sub_agent_outputs["sentiment"] = f"Sentiment analyst error: {e!r}"
 
-        await asyncio.sleep(1.0) # Stagger
-
-        # Sentiment agent takes 'query' and now also gets the explicit company name
-        try:
-            print(f"--- Calling parallel sentiment agent ---")
-            # The sentiment agent is now called with the query AND the extracted entity
-            # This requires a small change in the sentiment agent to accept `company_name` directly
-            # For now, we assume it will re-extract, but the fix is to pass it.
-            # Let's assume the Sentiment agent is updated to handle this:
-            payload = {"query": standalone_question, "company_name": entity_name}
-            result = await sentiment_app_instance.ainvoke(payload)
-            sub_agent_outputs["sentiment"] = result.get("final_answer", "No response.")
-        except Exception as e: 
-            sub_agent_outputs["sentiment"] = f"Analyst error: {e!r}"
-
+        # 3. Run all tasks concurrently for maximum speed.
+        await asyncio.gather(call_funda(), call_tech(), call_sentiment())
         return {"sub_agent_outputs": sub_agent_outputs}
+
 
     async def summarize_session_node(self, state: IrisState) -> Dict:
         """

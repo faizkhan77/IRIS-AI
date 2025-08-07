@@ -53,6 +53,9 @@ class ExtractedTechDetailsV3(BaseModel):
 # --- TypedDict for State ---
 class TechnicalAgentState(TypedDict):
     question: str
+    supervisor_decision: Optional[Dict]
+    return_structured_data: bool
+    stock_identifier: Optional[str] # Add this field
     company_name: Optional[str] 
     extraction_details: Optional[ExtractedTechDetailsV3]
     time_period_days: Optional[int] # NEW
@@ -73,7 +76,11 @@ EXTRACT_QUERY_DETAILS_PROMPT_V3 = """
     **CRITICAL RULES:**
 
 
-    1.  **Time Period (`time_period_years`):** If the user mentions a duration like "last 5 years", "over 3 years", "last year", you MUST extract the number of years.
+    1. **Combined Analysis (HIGHEST PRIORITY):**
+        - If the user asks for a broad "technical analysis" or "technical performance" of a specific stock, you MUST set BOTH `is_historical_performance_query` AND `is_general_outlook_query` to `true`. This signals a request for a complete, combined analysis.
+        - Example: "Technical analysis of AAPL" -> `is_historical_performance_query: true`, `is_general_outlook_query: true`
+        - Example: "Technical performance of TSLA over 3 years" -> `is_historical_performance_query: true`, `is_general_outlook_query: true`, `time_period_years: 3` 
+    2. **Time Period (`time_period_years`):** If the user mentions a duration like "last 5 years", "over 3 years", "last year", you MUST extract the number of years.
     2.  **Historical Performance (`is_historical_performance_query`):** If the query asks about performance over a time period (e.g., "best performing stock in the last 5 years"), you MUST set `is_historical_performance_query` to `true`. This is very important.
     3.  **`stock_identifier` is MANDATORY if a calculation is needed.** If the user mentions a company (e.g., "Reliance", "Aegis Logistics"), you MUST extract it.
     4.  **`is_calculation_requested` MUST be `true`** if the user asks any question about a specific stock that requires data (e.g., "is it volatile?", "is it overbought?", "is it a good buy?").
@@ -89,24 +96,17 @@ EXTRACT_QUERY_DETAILS_PROMPT_V3 = """
 
     **--- EXAMPLES (Study these carefully) ---**
 
-    - **User Question:** "What has been the best performing stock in the last 5 years?"
-    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "stock", "time_period_years": 5, "is_general_outlook_query": false, "is_historical_performance_query": true, "implied_category": null}}
+    - **User Question:** "Technical performance of X over X years"
+    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "X", "time_period_years": X, "is_general_outlook_query": true, "is_historical_performance_query": true, "implied_category": null}}
 
-    - **User Question:** "What is the RSI of Reliance over the last 6 months?"
-    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": ["rsi"], "stock_identifier": "Reliance", "time_period_years": null, "is_general_outlook_query": false, "is_historical_performance_query": false, "implied_category": null}}
-      (Note: RSI is a point-in-time calculation, so we don't treat it as historical performance)
+    - **User Question:** "Technical analysis of X"
+    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "X", "time_period_years": null, "is_general_outlook_query": true, "is_historical_performance_query": true, "implied_category": null}}
 
-    - **User Question:** "Is xyz overbought?"
-    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "Reliance", "time_period_years": null,"is_general_outlook_query": false, "implied_category": "momentum"}}
+    - **User Question:** "Should I buy based on RSI and MACD?"
+    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": ["rsi", "macd"], "stock_identifier": "stock", "time_period_years": null, "is_general_outlook_query": false, "is_historical_performance_query": false, "implied_category": null}}
 
-    - **User Question:** "How volatile is xyz now?"
-    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "Aegis Logistics", "time_period_years": null,"is_general_outlook_query": false, "implied_category": "volatility"}}
-
-    - **User Question:** "Is xyz a good buy right now?"
-    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "Reliance", "time_period_years": null,"is_general_outlook_query": true, "implied_category": null}}
-
-    - **User Question:** "Technical analysis of xyz"
-    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "ABB India", "time_period_years": null,"is_general_outlook_query": true, "implied_category": null}}
+    - **User Question:** "Is X overbought?"
+    - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": null, "stock_identifier": "X", "time_period_years": null, "is_general_outlook_query": false, "is_historical_performance_query": false, "implied_category": "momentum"}}
 
     - **User Question:** "Should I buy xyz based on RSI, MACD, and Supertrend?"
     - **Your Output:** {{"is_stock_market_related": true, "is_calculation_requested": true, "indicator_names": ["rsi", "macd", "supertrend"], "stock_identifier": "Aegis Logistics","time_period_years": null, "is_general_outlook_query": false, "implied_category": null}}
@@ -126,35 +126,53 @@ ANSWER_COMPOSER_PROMPT_V3 = """
 
     **User's Question:** "{question}"
 
-    --- Analysis Data ---
-    - Stock Analyzed: {stock_identifier}
-    - Aggregated Result: {aggregation_result}
-    - Individual Indicator Results: {indicator_results}
-    - Error Message: {error_message}
+     --- Analysis Data Provided ---
+    - Stock Analyzed: {{stock_identifier}}
+    - Aggregated Result Data (JSON):{{aggregation_result}}
+    - Individual Indicator Results Data (JSON): {{indicator_results}}
+    - Error Message (if any): {{error_message}}
     ---
 
     **Instructions (in order of priority):**
 
     1.  **If an `Error Message` exists:** State the problem gracefully.
-        - Example: "I'm sorry, I couldn't find a unique stock matching '{stock_identifier}'. Could you please provide a more specific name or symbol?"
+        - Example: "I'm sorry, I couldn't find a unique stock matching '{{stock_identifier}}'. Could you please provide a more specific name or symbol?"
 
 
-    2.  **If the result is `historical_performance`:** This is a performance summary.
-        - State the final score and what it means.
-        - Explain the key metrics that led to the score (CAGR, Volatility, Sharpe Ratio).
-        - Example: "Over the last 5 years, {stock_identifier} achieved a **Technical Performance Score of 7.5/10**. This is based on a strong annual price growth of 25% and a moderate volatility of 30%."
+    2.  **If BOTH historical data and an `Aggregated Result` are present:** This is a comprehensive analysis. You MUST present both parts using the following markdown structure.
+        - **Step 1:** Extract the `historical_performance_score` result from the `Individual Indicator Results`. Extract the `Aggregated Result` data.
+        - **Step 2:** Generate the response using this exact format:
+        ```markdown
+        ## Comprehensive Technical Analysis for {{stock_identifier}}
 
+        ### Current Indicator Outlook
+        Based on a real-time aggregation of key indicators (like RSI, MACD), the current outlook is a **'{{overall_verdict}}'** with a composite score of **{{composite_score}}**. This suggests a {{overall_verdict}} short-term sentiment.
 
-    3.  **If an `Aggregated Result` exists:** This is the main insight.
-        - State the overall verdict and score directly.
-        - Briefly mention which indicators support this view. Keep it to one or two sentences.
-        - Example: "The overall technical outlook for {stock_identifier} is currently a 'Buy', based on strong signals from the MACD and Supertrend indicators."
+        ### Historical Performance
+        Over the long term, the stock has a **Technical Performance Score of {{technical_performance_score}}/10**. This score reflects its performance over the analyzed period and is based on these key metrics:
+        - **Price CAGR:** {{price_cagr_perc}}%
+        - **Annualized Volatility:** {{annualized_volatility_perc}}%
+        - **Sharpe Ratio (Risk-Adjusted Return):** {{sharpe_ratio}}
 
-    4.  **If there is a single `Individual Indicator Result`:**
-        - Explain the result in simple terms.
-        - Example: "The RSI for {stock_identifier} is 25.5, which suggests the stock may be 'oversold'. This is often considered a potential buying signal by traders."
+        ### Summary
+        In summary, while the stock's long-term historical performance score is {{technical_performance_score}}/10, the current indicators are pointing towards a {{overall_verdict}} signal.
+        ```
 
-    5.  **If it's a general question (no calculation):**
+    3.  **If ONLY an `Aggregated Result` exists:** This is for a simple "buy/sell" query.
+        - "The overall technical outlook for {{stock_identifier}} is currently a **'{{overall_verdict}}'**, with a composite score of **{{composite_score}}**. This is based on signals from key indicators like RSI and MACD."
+
+    4.  **If ONLY a `historical_performance_score` result exists:**
+        - "The **Technical Performance Score for {{stock_identifier}} is {{technical_performance_score}}/10**. This is based on historical data including a Price CAGR of **{{price_cagr_perc}}%**, Volatility of **{{annualized_volatility_perc}}%**, and a Sharpe Ratio of **{{sharpe_ratio}}**."
+
+    5.  **If there is a single `Individual Indicator Result` (but no aggregation):**
+        - You MUST analyze the `Individual Indicator Results` data.
+        - Extract the specific values (e.g., `macd_line`, `rsi_value`).
+        - Extract the `signal` (e.g., "buy", "sell").
+        - Explain the result and the signal in simple terms.
+        - **Example:** "Based on the latest data for {{stock_identifier}}, the **MACD** indicator is showing a **Buy** signal. The MACD line is at {{macd_line}} and the signal line is at {{signal_line}}."
+        - **Example:** "The **RSI** for {{stock_identifier}} is {{rsi}}, which suggests the stock is in a **Neutral** zone, not overbought or oversold."
+
+    6.  **If it's a general question (no calculation):**
         - Provide a simple, 2-sentence definition of the indicator(s) asked about.
         - Example: "The Relative Strength Index, or RSI, is a tool traders use to see if a stock might be overbought or oversold."
 
@@ -162,11 +180,44 @@ ANSWER_COMPOSER_PROMPT_V3 = """
 """
 
 
+async def entry_point_node(state: TechnicalAgentState) -> Dict:
+    """
+    NEW ENTRY POINT: This node simply ensures the input state is correctly formed.
+    The 'return_structured_data' flag is often passed in the initial payload
+    but might not be in the TypedDict's default. This node normalizes it.
+    """
+    print("---NODE: Technical Agent Entry Point---")
+    # Set the flag to False if it's not explicitly passed as True.
+    # This ensures it always has a boolean value in the state.
+    return {"return_structured_data": state.get("return_structured_data", False)}
 
-# --- Agent Nodes (Async, Optimized & Enhanced for Aggregation) ---
+
 async def extract_and_prepare_node(state: TechnicalAgentState) -> Dict:
-    """Extracts details, validates them, and determines which indicators to run."""
-    print("---NODE: Extract & Prepare (Time-Aware)---")
+    """
+    Extracts details from the query. For combined analysis, it prepares all required indicators.
+    Defaults to a 1-year timeframe if not specified for historical parts.
+    """
+    print("---NODE: Extract & Prepare (Unified Analysis)---")
+    
+    # High-priority path for fundamentals_agent remains unchanged
+    if state.get("target_fincode") and state.get("stock_identifier"):
+        # This logic is for the multi-stock performance path and is correct.
+        print(f"--- Fincode {state['target_fincode']} was provided directly. ---")
+        details = ExtractedTechDetailsV3(
+            is_stock_market_related=True, is_calculation_requested=True,
+            stock_identifier=state["stock_identifier"], is_historical_performance_query=True
+        )
+        time_period_days = None
+        if state.get("supervisor_decision") and state["supervisor_decision"].get("time_period_years"):
+            time_period_years = state["supervisor_decision"]["time_period_years"]
+            time_period_days = time_period_years * 365
+        return {
+            "indicators_to_run": ["historical_performance_score"],
+            "extraction_details": details, "time_period_days": time_period_days
+        }
+
+    # Standard path for direct user queries
+    print("--- Performing LLM extraction for direct query. ---")
     prompt = EXTRACT_QUERY_DETAILS_PROMPT_V3.format(question=state["question"])
     structured_llm = groq_llm_fast.with_structured_output(ExtractedTechDetailsV3, method="json_mode")
     try:
@@ -174,32 +225,33 @@ async def extract_and_prepare_node(state: TechnicalAgentState) -> Dict:
         print(f"LLM Extraction: {details.model_dump_json(indent=2)}")
         
         if not details.is_calculation_requested:
-            # Handle general definition questions (no change needed)
             return {"indicators_to_run": details.indicator_names or [], "extraction_details": details}
-
         if not details.stock_identifier:
-            return {"error_message": "Please specify a stock name for the analysis."}
+            return {"error_message": "Please specify a stock name.", "extraction_details": details}
 
         indicators_to_run = []
         time_period_days = None
         
-        # --- NEW: Time-aware logic ---
-        if details.is_historical_performance_query and details.time_period_years:
-            indicators_to_run = ["historical_performance_score"]
-            time_period_days = details.time_period_years * 365
-            print(f"Historical performance query detected for {details.time_period_years} years. Tool: {indicators_to_run}")
-        else:
-            # Fallback to existing point-in-time logic
+        # --- THIS IS THE NEW UNIFIED LOGIC ---
+        # If a full analysis is requested (historical + general)
+        if details.is_historical_performance_query and details.is_general_outlook_query:
+            years = details.time_period_years if details.time_period_years is not None else 1
+            print(f"Combined analysis query detected. Timeframe: {years} year(s).")
+            # Run BOTH historical score and the default indicators for aggregation
+            indicators_to_run = ["historical_performance_score"] + AGGREGATION_DEFAULT_INDICATORS
+            time_period_days = years * 365
+        # --- END NEW LOGIC ---
+        else: # Handle specific, non-combined queries
             if details.indicator_names:
-                indicators_to_run = [name for name in details.indicator_names if name in INDICATOR_TOOLS_MAP and name != "historical_performance_score"]
-            elif details.is_general_outlook_query:
+                indicators_to_run = [name for name in details.indicator_names if name in INDICATOR_TOOLS_MAP]
+            elif details.is_general_outlook_query: # Just aggregation, no history
                 indicators_to_run = AGGREGATION_DEFAULT_INDICATORS
             elif details.implied_category:
                 indicator = DEFAULT_INDICATORS_BY_CATEGORY.get(details.implied_category)
                 if indicator: indicators_to_run = [indicator]
         
         if not indicators_to_run:
-            return {"error_message": "I couldn't determine which technical analysis to perform. Please be more specific."}
+            return {"error_message": "I couldn't determine which analysis to perform.", "extraction_details": details}
         
         return {"indicators_to_run": indicators_to_run, "extraction_details": details, "time_period_days": time_period_days}
     except Exception as e:
@@ -345,39 +397,87 @@ def aggregate_results_node(state: TechnicalAgentState) -> Dict:
     print(f"Aggregation Result: {aggregation}")
     return {"aggregation_result": aggregation}
 
-async def compose_final_answer_node(state: TechnicalAgentState) -> Dict:
-    """Composes the final answer, handling single, multiple, and aggregated results."""
-    print("---NODE: Compose Final Answer---")
-    
-    # Safely get all parts of the state
-    error_msg = state.get("error_message", "Not applicable.")
-    agg_result = state.get("aggregation_result", "Not applicable.")
-    indicator_res = state.get("indicator_results", "Not applicable.")
-    stock_id = state.get("extraction_details").stock_identifier if state.get("extraction_details") else "the stock"
+# ... (all other code in technicals_agent.py remains the same) ...
 
-    format_args = {
-        "question": state["question"],
-        "stock_identifier": stock_id,
-        "indicator_results": json.dumps(indicator_res),
-        "aggregation_result": json.dumps(agg_result),
-        "error_message": error_msg,
-    }
+async def compose_final_answer_node(state: TechnicalAgentState) -> Dict:
+    """
+    Composes the final answer, now with robust data unpacking for the prompt.
+    """
+    print("---NODE: Compose Final Answer (with Data Unpacking)---")
+
+    # Data Mode for agent-to-agent communication remains the same
+    if state.get("return_structured_data") is True:
+        # ... (no changes needed here) ...
+        print("--- Data Mode detected. Returning structured JSON. ---")
+        final_data = {}
+        if state.get("aggregation_result"):
+            final_data = state.get("aggregation_result")
+        
+        hist_perf = next((item.get('result') for item in state.get("indicator_results", []) if item.get('indicator') == 'historical_performance_score'), None)
+        if hist_perf:
+            final_data.update(hist_perf)
+        
+        if not final_data:
+             final_data = {"individual_results": state.get("indicator_results", [])}
+
+        return {"final_answer": final_data}
+
+
+    print("--- User-Facing Mode detected. Composing formatted text. ---")
     
+    # --- THIS IS THE FIX ---
+    # We will now pass the data as clean JSON strings to the prompt.
+    # This avoids any KeyError and lets the LLM do the unpacking.
+    
+    # Prepare individual results
+    indicator_results_dict = {}
+    for item in state.get("indicator_results", []):
+        indicator_name = item.get('indicator')
+        result_data = item.get('result')
+        if indicator_name and result_data:
+            indicator_results_dict[indicator_name] = result_data
+
+    # Prepare final arguments for the prompt template
+    format_args = {
+        "question": state.get("question", ""),
+        "stock_identifier": state.get("extraction_details").stock_identifier if state.get("extraction_details") else "the stock",
+        "error_message": state.get("error_message", "Not applicable."),
+        # Pass the raw dictionaries, converted to JSON strings
+        "aggregation_result": json.dumps(state.get("aggregation_result", {})),
+        "indicator_results": json.dumps(indicator_results_dict),
+    }
+
+    print(f"Final prompt arguments: {json.dumps(format_args, indent=2)}")
+
+    # Use .format(), as all keys are guaranteed to be in format_args now.
     prompt = ANSWER_COMPOSER_PROMPT_V3.format(**format_args)
     
     try:
         response = await groq_llm.ainvoke(prompt)
         final_answer = response.content.strip()
-        print(f"Composed Final Answer: {final_answer}")
+        print(f"Composed Final Answer (Text): {final_answer}")
         return {"final_answer": final_answer}
     except Exception as e:
+        print(f"CRITICAL ERROR in compose_final_answer_node: {e}")
+        import traceback
+        traceback.print_exc()
         return {"final_answer": f"I encountered a problem formulating the response: {e}"}
-# --- Graph Conditional Edges ---
 
 def route_after_preparation(state: TechnicalAgentState) -> str:
+    """Router to decide the next step after preparation."""
     if state.get("error_message"): return "compose_answer"
-    if state["extraction_details"].is_calculation_requested: return "resolve_fincode"
-    return "compose_answer" 
+    
+    # --- THIS IS THE FIX ---
+    # If we already have a fincode, go straight to fetching prices.
+    if state.get("target_fincode"):
+        print("--- ROUTING: Fincode present, skipping resolution. ---")
+        return "fetch_prices"
+    # --- END OF FIX ---
+    
+    if state["extraction_details"].is_calculation_requested: 
+        return "resolve_fincode"
+        
+    return "compose_answer"
 
 def route_after_db_steps(state: TechnicalAgentState) -> str:
     if state.get("error_message"): return "compose_answer"
@@ -393,7 +493,7 @@ def route_after_calculation(state: TechnicalAgentState) -> str:
     
     # If the user asked a general "buy/sell" question, we should aggregate.
     if extraction_details and extraction_details.is_general_outlook_query:
-        print("--- ROUTING: General outlook query. Proceeding to aggregate results. ---")
+        print("--- ROUTING: General outlook query detected. Proceeding to aggregate results. ---")
         return "aggregate"
     else:
         # For all other cases (specific indicators, historical analysis), go directly to the composer.
@@ -404,6 +504,7 @@ def route_after_calculation(state: TechnicalAgentState) -> str:
 # --- Build the Graph ---
 graph_builder = StateGraph(TechnicalAgentState)
 
+graph_builder.add_node("entry_point", entry_point_node) # NEW ENTRY
 graph_builder.add_node("prepare", extract_and_prepare_node)
 graph_builder.add_node("resolve_fincode", resolve_fincode_node)
 graph_builder.add_node("fetch_prices", fetch_price_data_node)
@@ -411,8 +512,8 @@ graph_builder.add_node("calculate", calculate_indicators_node)
 graph_builder.add_node("aggregate", aggregate_results_node) # New node
 graph_builder.add_node("compose_answer", compose_final_answer_node)
 
-graph_builder.set_entry_point("prepare")
-
+graph_builder.set_entry_point("entry_point")
+graph_builder.add_edge("entry_point", "prepare")
 # --- MODIFIED EDGES ---
 graph_builder.add_conditional_edges("prepare", route_after_preparation)
 graph_builder.add_conditional_edges("resolve_fincode", route_after_db_steps, {

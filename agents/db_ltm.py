@@ -242,3 +242,35 @@ def get_session_and_user_ids_by_thread(thread_id: str) -> Optional[Tuple[int, in
         cursor.close()
         cnx.close()
 
+def find_matching_companies(search_term: str, limit: int = 5) -> list[str]:
+    """Finds company names that are similar to a search term using raw SQL."""
+    cnx = get_db_connection()
+    cursor = cnx.cursor()
+    try:
+        # --- THIS IS THE FIX ---
+        # Specify the database name explicitly: `accord_base_live.company_master`
+        query = """
+            SELECT compname
+            FROM accord_base_live.company_master
+            WHERE compname LIKE %s
+            ORDER BY
+                CASE
+                    WHEN compname LIKE %s THEN 1
+                    ELSE 2
+                END,
+                LENGTH(compname)
+            LIMIT %s;
+        """
+        # --- END OF FIX ---
+        
+        params = (f"%{search_term}%", f"{search_term}%", limit)
+        
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        return [row[0] for row in results]
+    except Error as e:
+        print(f"Database error in find_matching_companies: {e}")
+        return []
+    finally:
+        cursor.close()
+        cnx.close()

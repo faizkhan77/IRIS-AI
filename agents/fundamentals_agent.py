@@ -11,12 +11,15 @@ import traceback
 from sqlalchemy.ext.asyncio import create_async_engine
 from db_config import ASYNC_DATABASE_URL
 from .screener_strategies import SCREENER_STRATEGIES, COLUMN_TO_TABLE_MAP
+from .industry_mapper import INDUSTRY_LIST
 
 # --- RAG INTEGRATION: Import the NEW intelligent context provider ---
 from agents.rag_context_provider import get_intelligent_context
 from pydantic import BaseModel, Field, model_validator
 from typing import Dict, Any
 
+from .technicals_agent import app as technicals_app_instance
+from .sentiment_agent import app as sentiment_app_instance
 
 # Custom module imports
 from model_config import groq_llm,groq_llm_fast
@@ -37,6 +40,7 @@ class KnownSchema(BaseModel):
 class ExtractionOutput(BaseModel):
     is_database_required: bool = Field(description="Is database access required to answer the question?")
     is_recommendation_query: bool = Field(False, description="Set to true ONLY for recommendation or screener queries like 'suggest stocks', 'top 5 companies based on...', 'recommend me...'.")
+    is_performance_analysis_query: bool = Field(False, description="Set true for time-based performance analysis.")
     is_health_checklist_query: bool = Field(False, description="Set to true ONLY for broad, subjective questions like 'Is [company] strong?', 'Is it a good buy?', or 'fundamental analysis of [company]'.")
     is_multi_metric_query: bool = Field(False, description="Set to true if the user is asking for more than one specific metric for a company (e.g., 'P/E and Market Cap of...').")
     is_shareholding_query: bool = Field(False, description="Set to true ONLY for questions about shareholding patterns, promoters, FII, DII, or public holdings.")  
@@ -73,12 +77,28 @@ class SQLQuery(BaseModel):
              
         return data
 
+# NEW: Pydantic model for the agent to extract its own parameters
+class PerformanceAnalysisParams(BaseModel):
+    time_period_years: Optional[int] = Field(None, description="The time period in years, if mentioned.")
+    sector: Optional[str] = Field(None, description="The industry sector, if mentioned.")
+
+class SupervisorDecision(BaseModel):
+    route: str
+    reasoning: str
+    time_period_years: Optional[int] = None
+    sector: Optional[str] = None
+
 # --- Agent State ---
 class FundamentalsAgentState(TypedDict):
     question: str
+    supervisor_decision: SupervisorDecision
+    mapped_sector: Optional[str]
+    performance_params: Optional[PerformanceAnalysisParams]
     extraction: Optional[ExtractionOutput]
     selected_strategy_key: Optional[str]
     screener_results: Optional[Dict[str, Any]]
+    fundamental_screener_results: Optional[List[Dict]]
+    performance_analysis_results: Optional[List[Dict]]
     generalized_tasks: Optional[Dict[str, str]]
     rag_contexts: Optional[Dict[str, str]]
     sql_queries: Optional[Dict[str, str]]
@@ -86,6 +106,9 @@ class FundamentalsAgentState(TypedDict):
     chart_data: Optional[Dict[str, List[Dict[str, Any]]]]
     error_message: Optional[str]
     final_answer: Dict[str, Any]
+
+class MappedIndustry(BaseModel):
+    mapped_industry_name: Optional[str] = Field(None, description="The single best matching industry name from the provided list, or null if no confident match is found.")
 
 # --- Prompts (Overhauled for Robustness) ---
 
@@ -136,60 +159,65 @@ GOLDEN_SCHEMA_CONTEXT = """
     */
 """
 
-# --- FIX: Incorporate Health Checklist identification into your original prompt ---
 EXTRACT_PROMPT = """
-    You are an expert financial data extraction assistant. Your most important task is to perform a Pre-Flight Check and categorize the user's intent.
+    You are an expert financial data extraction assistant. Your most important task is to perform a Pre-Flight Check and categorize the user's intent based on the rules below.
 
     --- Golden Schema ---
     {golden_schema}
     ---
     
-    **Intent Categorization Rules (in order of priority):**
+    **Intent Categorization Rules (in strict order of priority):**
 
-    1. **Recommendation & Screener Query (`is_recommendation_query`):** HIGHEST PRIORITY. Check if the user is asking for a recommendation, suggestion, or a list of stocks based on criteria.
-        - **Examples:** "recommend me some value stocks", "top 5 companies by market cap", "best stocks for beginners", "stocks with high ROCE and low debt"
-        - If YES, you MUST set `is_recommendation_query` to `true`. This overrides all other categories.
-        
-    2. **Fundamental Health Check (`is_health_checklist_query`):** First, check if the user is asking a broad, subjective question about a company's overall health, strength, or a general "buy" recommendation.
-        - **Examples:** "Is Reliance strong?", "Should I buy ABB India?", "fundamental analysis of Ambalal Sarabhai"
-        - If YES, you MUST set `is_health_checklist_query` to `true`. This is the highest priority and overrides all other rules.
+    1.  **Performance Analysis (`is_performance_analysis_query`): HIGHEST PRIORITY.**
+        - Does the query ask for "best performing", "most consistent", "top stocks over time", etc., AND explicitly mention a **time period** (e.g., "last 5 years", "since 2020")?
+        - If YES, you MUST set `is_performance_analysis_query` to `true`. This overrides all other rules. Do NOT extract entities or tasks for this route.
 
-    2.  **Simple Lookup (`known_schema_lookups`):** If it is NOT a health check, then check if the question can be answered by a single known column in the Golden Schema.
-        - **Examples:** "List all distinct industries", "What are the scrip codes?"
-        - If YES, you MUST populate the `known_schema_lookups` field.
+    2.  **Recommendation / Screener (`is_recommendation_query`):**
+        - If it's NOT a performance query, does it ask for a recommendation, suggestion, or a list of stocks based on criteria (e.g., "recommend value stocks", "top 5 by P/E")?
+        - If YES, set `is_recommendation_query` to `true`.
 
-    3.  **Specific Metric Query (Default):** If it is neither of the above, it is a query for a specific metric.
-        - **Example:** "Market cap of company ABC?"
+    3.  **Shareholding (`is_shareholding_query`):**
+        - If not the above, does it ask specifically about shareholding structure (promoter, FII, DII, etc.)?
+        - If YES, set `is_shareholding_query` to `true`.
 
-    2.  **Multi-Metric Query (`is_multi_metric_query`):** If it's NOT a health check, check if the user is asking for **TWO OR MORE** specific metrics for a single company.
-        - **Examples:** "What is the x, y and z of X?", "Give me the x, y, and y for X"
-        - If YES, you MUST set `is_multi_metric_query` to `true`. The `tasks` for that entity MUST be a LIST of the individual metrics requested.
+    4.  **Health Checklist (`is_health_checklist_query`): HIGHEST PRIORITY.**
+        -   Does the query ask for "fundamental analysis of", "fundamentals of", "health of", "is [company] strong?", or to "compare the fundamentals of" one or more companies?
+        -   These phrases are a DIRECT command to use the comprehensive health checklist tool.
+        -   If YES, you MUST set `is_health_checklist_query` to `true`. This overrides all other rules. You MUST also extract all company names into the `entities` list.
 
-    4. **Shareholding Pattern Query (`is_shareholding_query`):** First, check if the question is specifically about the shareholding structure.
-        - **Examples:** "shareholding pattern of Reliance", "Who are the major shareholders?", "promoter holding in ABB", "FII DII holding"
-        - If YES, you MUST set `is_shareholding_query` to `true`. This is the highest priority.
+    5.  **Multi-Metric Query (`is_multi_metric_query`):**
+        -   Is the user asking for a **LIST or RANKING** of stocks based on a **single, specific, current metric** (e.g., "top 5 by X", "companies with highest X")?
+        -   If YES, you **MUST** set `is_multi_metric_query` to `false`. This is not a multi-metric query.
+        -   The key in the `tasks` dictionary **MUST** be `"General Query"`.
+        -   The value for the task **MUST** be a single, descriptive **STRING**.
 
+    6. **Simple Ranking Query:**
+        -   Is the user asking for a **LIST or RANKING** of stocks based on a **single, specific, current metric** (e.g., "top y by X", "companies with highest X")?
+        -   If YES, you MUST set `is_multi_metric_query` to `false`.
+        -   The key in the `tasks` dictionary MUST be `"General Query"`.
+        -   The value for the task MUST be a single, descriptive **STRING**.
+
+    7.  **Specific Metric / Simple Lookup (Default):**
+        - If NONE of the above match, it is a simple query for a single metric.
+        - You should extract the `entities` and `tasks`.
+        - If possible, populate `known_schema_lookups`.
 
     **Final JSON Output Rules:**
     - `is_database_required`: Set to true if financial data is needed.
-    - `entities`: A list of all distinct company names or stock symbols.
-    - `tasks`: A dictionary mapping each entity's name to a concise task description.
+    - For all routes EXCEPT `performance_analysis` and `recommendation`, you should extract `entities` and `tasks`. For those two routes, you can leave them as empty lists/dicts.
 
     --- EXAMPLES ---
-    User Question: "Is Reliance Industries strong?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": true,"is_shareholding_query": false,"is_multi_metric_query": false, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Fundamental health analysis for Reliance Industries"}}, "known_schema_lookups": null}}
+    User Question: "What were the top performing IT stocks over the last 3 years?"
+    Your Output: {{"is_database_required": true, "is_performance_analysis_query": true, "is_recommendation_query": false, "is_health_checklist_query": false, "is_multi_metric_query": false, "is_shareholding_query": false, "entities": [], "tasks": {{}}, "known_schema_lookups": null}}
 
-    User Question: "List all distinct industries"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false,"is_shareholding_query": false, "is_multi_metric_query": false, "entities": [], "tasks": {{"General Query": "List all distinct industries from the database"}}, "known_schema_lookups": {{"General Query": {{"table": "company_master", "column": "industry"}}}}}}
+    User Question: "Recommend some good value stocks."
+    Your Output: {{"is_database_required": true, "is_performance_analysis_query": false, "is_recommendation_query": true, "is_health_checklist_query": false, "is_multi_metric_query": false, "is_shareholding_query": false, "entities": [], "tasks": {{}}, "known_schema_lookups": null}}
+    
+    User Question: "What is the X and Y of Company ABC?"
+    Your Output: {{"is_database_required": true, "is_performance_analysis_query": false, "is_recommendation_query": false, "is_health_checklist_query": false, "is_multi_metric_query": true, "is_shareholding_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": ["X", "Y"]}}, "known_schema_lookups": null}}
 
-    User Question: "What is the market cap of Company ABC?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false,"is_shareholding_query": false,"is_multi_metric_query": false, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": "market capitalization of Company ABC"}}, "known_schema_lookups": null}}
-
-    User Question: "What is the x and y of Company X?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_shareholding_query": false, "is_multi_metric_query": true, "entities": [{{"entity_name": "Company ABC"}}], "tasks": {{"Company ABC": ["market capitalization", "P/E ratio"]}}, "known_schema_lookups": null}}
-
-    User Question: "What is the shareholding pattern for Reliance Industries?"
-    Your Output: {{"is_database_required": true, "is_health_checklist_query": false, "is_shareholding_query": true, "is_multi_metric_query": false, "entities": [{{"entity_name": "Reliance Industries"}}], "tasks": {{"Reliance Industries": "Detailed shareholding pattern for Reliance Industries"}}, "known_schema_lookups": null}}
+    User Question: "What are the top y companies by X?"
+    Your Output: {{"is_database_required": true, "is_recommendation_query": false, "is_performance_analysis_query": false, "is_health_checklist_query": false, "is_multi_metric_query": false, "is_shareholding_query": false, "entities": [], "tasks": {{"General Query": "top y companies by X"}}, "known_schema_lookups": null}}
 
     ---
     User Question: {question}
@@ -212,17 +240,14 @@ GENERALIZE_TASK_PROMPT = """
     Your Output:
 """
 
-# --- FINAL FIX: Incorporating the strict Golden Schema rule into your existing prompt ---
 WRITE_QUERY_PROMPT = """
     You are a master SQL writer for a MySQL database. Your job is to write a single, syntactically correct SQL query. You must follow a strict thought process.
 
     --- SCHEMA CONTEXT ---
     -- **PRIMARY SOURCE OF TRUTH: Golden Schema** --
-    -- This schema is ALWAYS correct. I will use it to determine which table contains a specific metric and what the correct date column is for that table.
     {golden_schema}
 
     -- **SECONDARY SOURCE: Dynamic RAG Schema** --
-    -- This provides additional context. I will use it for column names, but if it conflicts with the Golden Schema, I will IGNORE the RAG context and trust the Golden Schema.
     {rag_context}
     --- END SCHEMA CONTEXT ---
 
@@ -230,29 +255,25 @@ WRITE_QUERY_PROMPT = """
 
     1.  **Analyze the Task & Consult Golden Schema FIRST:**
         - The user wants: "{current_task}".
-        - I will immediately look at the `Golden Schema` to identify the correct table and date column for the requested metrics.
-        - **Example:** If the task is "latest closing price", I see in the Golden Schema that `close` is in `bse_abjusted_price_eod` and its date column is `date`. I will use ONLY this table and this date column, ignoring any conflicting suggestions from the RAG context.
-        - The Golden Schema is my ultimate authority.
+        - I will immediately look at the `Golden Schema` to identify the correct table for the requested metrics. The Golden Schema is my ultimate authority.
 
-    2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for any given table.
-        - For `company_equity` or `company_equity_cons`, the date column is `year_end`. I will NEVER use `date` for this table.
-        - For `company_results` or `company_results_cons`, the date column is `date_end`.
-        - For `bse_abjusted_price_eod`, the date column is `date`.
+    2.  **CRITICAL DATE RULE:** I MUST use the exact date column mentioned in the Golden Schema for any given table (`year_end` for `company_equity`, `date_end` for `company_shareholding_pattern`, etc.).
 
-    3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`) to prevent "ambiguous column" errors.
+    3.  **CRITICAL JOIN RULE:** When joining tables, I MUST qualify all columns with their table alias (e.g., `cm.fincode`, `ce.mcap`).
 
-    4.  **Efficient Joins:** I will only JOIN tables if their columns are explicitly required by the RAG context OR if they are needed to fulfill the Golden Schema's instructions for a metric.
+    4.  **HANDLE ENTITY TYPES (THIS IS THE FIX):**
+        -   If `Entity Name` is a specific company (e.g., 'HDFC Bank', 'Reliance Industries'), I MUST add a WHERE clause to filter by `compname` on the `company_master` table.
+        -   If `Entity Name` is a special key like 'General Query' OR if it describes a sector (e.g., 'bank sector'), this is a RANKING query. I MUST NOT filter by a specific company name. Instead, if a sector is mentioned in the task, I will add a `WHERE cm.industry LIKE '%[sector]%'` clause.
+        -   I will then ORDER BY the relevant metric and apply a LIMIT if specified in the task.
 
-    5.  **Entity Filtering:** For a specific company like '{entity_name}', I MUST add a WHERE clause to filter by `fincode` using a subquery on `company_master`: `WHERE fincode = (SELECT fincode FROM company_master WHERE compname LIKE '%{entity_name}%' ORDER BY LENGTH(compname) ASC LIMIT 1)`.
-
-    6.  **Ranking Queries:** For a 'General Query' (like "top 5"), I MUST NOT filter by a specific company name. I will `ORDER BY` the relevant metric and use `LIMIT`.
-
-    7.  **"Latest" Data:** For a single entity, I will `ORDER BY [correct_date_column] DESC LIMIT 1`. For rankings, this is more complex and may require a subquery to find the max date per company.
+    5.  **"Latest" Data:** For rankings, I must construct a query that finds the latest data for EACH company, often using a subquery or a window function. A simple `ORDER BY year_end DESC LIMIT 1` is wrong for rankings. The correct way is often to join with a subquery like `JOIN (SELECT fincode, MAX(year_end) as max_year FROM company_equity GROUP BY fincode) latest ON ce.fincode = latest.fincode AND ce.year_end = latest.max_year`.
 
     --- TASK ---
     Original Question: "{original_question}"
     Current Task: "{current_task}"
     Entity Name (if applicable): "{entity_name}"
+
+    NOTE: Whenever trying to match something always use wildcards and LIKE clause instead of direct matching (e.g xyz LIKE "%xyz%")
 
     Now, following my rigorous thought process and trusting the Golden Schema above all else, I will write the SQL query as a single JSON object.
 """
@@ -267,16 +288,21 @@ ANSWER_COMPOSER_PROMPT = """
     **--- Part 1: Your Thought Process (for content) ---**
     1.  **Analyze Intent:** First, I will understand the user's original question: "{question}".
     2.  **Extract Key Data:** I will read the JSON `results_summary` to find all the core data points and verdicts.
-    3. **Recommendation Logic:** If the results contain a `strategy_name`, this is a stock recommendation.
+    3.  **Performance Analysis Logic (CRITICAL):** If the results contain a `methodology` and a list of `stocks`, this is a Performance Analysis query. I MUST follow these steps:
+        -   State the methodology clearly.
+        -   Create a comprehensive markdown table. The table header MUST include these exact columns in this order: `Company Name`, `Performance Score`, `Funda Score`, `Tech Score`, `Avg ROCE (%)`, `Price CAGR (%)`, `Volatility (%)`, and `Sharpe Ratio`.
+        -   Populate the table with the data from the `stocks` list.
+        -   Write a concluding "Summary" section that highlights the top 1-2 stocks and mentions their key scores (Performance, Funda, and Tech) to justify the ranking.
+    4. **Recommendation Logic:** If the results contain a `strategy_name`, this is a stock recommendation.
         -   First, state which strategy was used and why (using the `strategy_name` and `reasoning`).
         -   Then, present the `stocks` in a clean markdown table.
         -   Provide a brief concluding summary.
-    4. **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
-    5.  **Shareholding Logic:** If the results contain keys like 'Promoters', 'FIIs', 'DIIs', this is a shareholding breakdown. I MUST present this clearly in a bulleted list.
-    6.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
-    7.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
-    8. **Comparison Logic:** If the user asked to "compare" and the JSON has data for multiple entities, I MUST present the data in a comparison format, ideally a markdown table.
-    9.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
+    5. **Synthesize Answer:** I will craft a direct, conversational answer that uses the data to address the user's specific intent. I will be concise and use simple language.
+    6.  **Shareholding Logic:** If the results contain keys like 'Promoters', 'FIIs', 'DIIs', this is a shareholding breakdown. I MUST present this clearly in a bulleted list.
+    7.  **Health Checklist Logic:** If the results contain multiple metrics like `market_cap`, `pe_ratio`, etc., this is a full "Fundamental Analysis". I MUST provide a multi-part answer: a summary, a detailed breakdown, and a final verdict.
+    8.  **Single Metric Logic:** If the results contain only one or two metrics (e.g., just `mcap`), I will provide a simple, direct 1-2 sentence answer.
+    9. **Comparison Logic:** If the user asked to "compare" and the JSON has data for multiple entities, I MUST present the data in a comparison format, ideally a markdown table.
+    10.  **Handle Errors:** If a query for a company resulted in an error, I will state it simply. Example: "I couldn't retrieve data for Reliance Industries due to a data availability issue."
 
 
     **Part 2: CRITICAL RULES:**
@@ -302,7 +328,69 @@ ANSWER_COMPOSER_PROMPT = """
     Now, applying BOTH your thought process and formatting rules, transform the internal JSON data into the final, perfect, user-facing markdown response.
 """
 
+INDUSTRY_MAPPER_PROMPT = """
+    Your task is to be a precise data mapper. Given a user's potentially vague or misspelled "sector" input, you must find the single best match from the provided list of "Canonical Industries".
+
+    **Canonical Industries List:**
+    {industry_list}
+
+    **User's Sector Input:** "{user_sector_input}"
+
+    **Rules:**
+    1.  **Exact Match Priority:** If the user's input exactly matches an item in the list (case-insensitive), return that item.
+    2.  **Abbreviation Mapping:** Map common abbreviations (e.g., "IT" -> "IT - Software", "NBFC" -> "Finance - NBFC").
+    3.  **Best Semantic Match:** If no exact match, find the closest semantic fit. For "Pharma", the best match is "Pharmaceuticals & Drugs". For "Real Estate", the best is "Construction - Real Estate".
+    4.  **Handle Ambiguity:** If the user says "Finance", a good default is "Finance - Others", but if they say "Housing Finance", the specific "Finance - Housing" is better.
+    5.  **No Confident Match:** If the input is completely unrelated (e.g., "Food Delivery") and has no clear match in the list, you MUST return null.
+
+    Output ONLY the valid JSON object.
+"""
+
 # --- Agent Nodes ---
+
+async def map_industry_and_params_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Extracts time period and sector from the query and maps the sector to a canonical name.
+    """
+    print(f"---NODE: Map Industry & Extract Params---")
+    
+    # LLM call to extract parameters
+    param_extractor_prompt = f"From the user query '{state['question']}', extract the time period in years and the industry sector."
+    extractor_llm = groq_llm_fast.with_structured_output(PerformanceAnalysisParams)
+    params = await extractor_llm.ainvoke(param_extractor_prompt)
+    
+    # LLM call to map the extracted sector
+    user_sector = params.sector
+    if not user_sector:
+        print("No sector provided, skipping mapping.")
+        return {"performance_params": params.model_dump()}
+
+    mapper_prompt = INDUSTRY_MAPPER_PROMPT.format(
+        industry_list=json.dumps(INDUSTRY_LIST),
+        user_sector_input=user_sector
+    )
+    mapper_chain = groq_llm_fast.with_structured_output(MappedIndustry)
+    mapped_result = await mapper_chain.ainvoke(mapper_prompt)
+    mapped_name = mapped_result.mapped_industry_name
+    
+    print(f"Mapped sector '{user_sector}' to '{mapped_name}'")
+    return {"performance_params": params.model_dump(), "mapped_sector": mapped_name}
+
+def entry_point_node(state: FundamentalsAgentState) -> Dict:
+    """
+    Initializes the state from the input payload, ensuring the supervisor's
+    decision is correctly passed into the graph's state.
+    """
+    print("---NODE: Fundamentals Agent Entry Point---")
+    # This is the crucial step. It takes the `supervisor_decision` from the initial
+    # input `state` and ensures it's part of the dictionary that gets passed along.
+    if "supervisor_decision" not in state:
+        raise ValueError("Supervisor decision must be provided in the input payload.")
+    
+    return {
+        "question": state["question"],
+        "supervisor_decision": state["supervisor_decision"]
+    }
 
 async def extract_node(state: FundamentalsAgentState) -> Dict:
     print("---NODE: Extract Entities & Tasks (with Pre-Flight Check)---")
@@ -327,7 +415,6 @@ async def select_strategy_node(state: FundamentalsAgentState) -> Dict:
     except Exception as e:
         return {"error_message": f"I had trouble determining a strategy: {e}"}
 
-
 async def execute_screener_node(state: FundamentalsAgentState) -> Dict:
     """
     Deterministically builds and executes a SQL query based on the selected strategy.
@@ -340,39 +427,33 @@ async def execute_screener_node(state: FundamentalsAgentState) -> Dict:
     strategy = SCREENER_STRATEGIES[strategy_key]
     print(f"Executing strategy: {strategy['name']}")
     
-    # --- MORE ROBUST SQL BUILDER USING THE IMPORTED MAP ---
+    # --- SQL Builder Logic (this part is correct and remains unchanged) ---
     table_aliases = {"company_equity": "ce", "company_finance_ratio": "cfr"}
-    
     select_clauses, join_clauses, where_clauses = set(), set(), []
     required_tables = set()
 
-    # Determine required tables and build clauses
     for col, (op, val) in strategy["rules"].items():
         table = COLUMN_TO_TABLE_MAP.get(col)
         if not table:
             print(f"Warning: Column '{col}' not found in COLUMN_TO_TABLE_MAP. Skipping.")
             continue
-        
         required_tables.add(table)
         alias = table_aliases[table]
-        
-        select_clauses.add(f"{alias}.{col}")
+        select_clauses.add(f"cm.{col}" if col == 'compname' else f"{alias}.{col}") # Qualify all columns
         where_clauses.append(f"{alias}.{col} {op} {val}")
 
-    # Build join statements and latest-data clauses
     for table in required_tables:
         alias = table_aliases[table]
         join_clauses.add(f"JOIN {table} {alias} ON cm.fincode = {alias}.fincode")
         where_clauses.append(f"{alias}.year_end = (SELECT MAX(year_end) FROM {table} WHERE fincode = cm.fincode)")
 
+    # Ensure compname is always selected for the table
+    select_clauses.add("cm.compname")
     select_str = ", ".join(list(select_clauses))
     join_str = " ".join(list(join_clauses))
     where_str = " AND ".join(where_clauses)
-    
-    # Ensure there's always an ORDER BY, defaulting to mcap if company_equity is joined
     order_by_clause = "ORDER BY ce.mcap DESC" if "company_equity" in required_tables else ""
-
-    full_query = f"SELECT cm.compname, {select_str} FROM company_master cm {join_str} WHERE {where_str} {order_by_clause} LIMIT 10"
+    full_query = f"SELECT {select_str} FROM company_master cm {join_str} WHERE {where_str} {order_by_clause} LIMIT 10"
 
     print(f"Generated Screener SQL: {full_query}")
     
@@ -382,17 +463,174 @@ async def execute_screener_node(state: FundamentalsAgentState) -> Dict:
             result = await connection.execute(text(full_query))
             rows = result.mappings().all()
         
-        existing_results = json.loads(state["query_results"]["recommendation"])
-        existing_results.update({
+        # --- THIS IS THE FIX ---
+        # 1. Get the reasoning from the previous step.
+        reasoning = json.loads(state["query_results"]["recommendation"]).get("reasoning", "N/A")
+
+        # 2. Build a new, clean result dictionary.
+        final_screener_payload = {
+            "reasoning": reasoning,
             "strategy_name": strategy["name"],
             "stocks": [dict(row) for row in rows]
-        })
-        return {"query_results": {"recommendation": json.dumps(existing_results, default=str)}}
+        }
+
+        # 3. Return the correct variable and use a consistent key ("recommendation").
+        return {"query_results": {"recommendation": json.dumps(final_screener_payload, default=str)}}
+        # --- END OF FIX ---
+
     except Exception as e:
         traceback.print_exc()
-        return {"error_message": f"I encountered an error while searching for stocks with the selected strategy. It's possible the required data is not available for this combination. Error: {e!r}"}
+        return {"error_message": f"I encountered an error while searching for stocks. Error: {e!r}"}
     finally:
         await async_engine_instance.dispose()
+
+# --- NEW Nodes for Performance Analysis Path ---
+async def fundamental_filter_and_score_node(state: FundamentalsAgentState) -> Dict:
+    print("---NODE: Fundamental Filter & Score---")
+    params = state["performance_params"]
+    time_period = params.get("time_period_years", 3)
+    sector = state.get("mapped_sector")
+    
+    # This complex query calculates CAGR and filters for fundamentally sound companies
+    # NOTE: CAGR is approximated here. A real implementation might use a DB function.
+    query_string = f"""
+            SELECT
+            cm.fincode, 
+            cm.compname,
+            cm.industry, 
+            ce.mcap,
+            cfr.net_sales_growth AS latest_sales_growth,
+            cfr.pat_growth AS latest_pat_growth,
+                (
+                    SELECT AVG(sub_cfr.roce)
+                    FROM company_finance_ratio AS sub_cfr
+                    WHERE sub_cfr.fincode = cm.fincode
+                    AND sub_cfr.year_end >= (YEAR(CURDATE()) - :time_period)
+                ) AS avg_roce
+            FROM company_master AS cm
+            JOIN company_equity AS ce ON cm.fincode = ce.fincode
+            JOIN company_finance_ratio AS cfr ON cm.fincode = cfr.fincode
+            WHERE
+                ce.year_end = (SELECT MAX(year_end) FROM company_equity WHERE fincode = cm.fincode)
+                AND cfr.year_end = (SELECT MAX(year_end) FROM company_finance_ratio WHERE fincode = cm.fincode)
+                AND ce.mcap > 5000
+                AND cfr.pat_growth > 0
+                { "AND cm.industry = :sector" if sector else "" }
+            LIMIT 100;
+        """
+    query = text(query_string)
+    params = {"time_period": time_period}
+    if sector:
+        print(f"Applying exact sector filter: '{sector}'")
+        params["sector"] = sector
+    
+    async_engine = create_async_engine(ASYNC_DATABASE_URL)
+    try:
+        async with async_engine.connect() as conn:
+            result = await conn.execute(query, params)
+            rows = [dict(row) for row in result.mappings().all()]
+        
+        if not rows:
+            return {"error_message": "Could not find any stocks matching the initial fundamental criteria."}
+            
+        print(f"Fundamental filter found {len(rows)} candidate stocks.")
+        return {"fundamental_screener_results": rows}
+    except Exception as e:
+        traceback.print_exc()
+        return {"error_message": f"DB error during fundamental filtering: {e!r}"}
+    finally:
+        await async_engine.dispose()
+
+
+async def parallel_technical_analysis_node(state: FundamentalsAgentState) -> Dict:
+    print("---NODE: Parallel Technical Analysis (with Fincode Forwarding)---")
+    candidates = state["fundamental_screener_results"]
+    time_period_years = state["performance_params"].get("time_period_years", 3)
+    
+    async def analyze_technicals(stock: Dict):
+        compname = stock["compname"]
+        fincode = stock["fincode"] # We already have the exact fincode here.
+        
+        # --- THIS IS THE FIX ---
+        # We now pass the pre-resolved fincode directly to the technicals agent.
+        tech_payload = {
+            "question": f"analyze performance of {compname} over {time_period_years} years",
+            "supervisor_decision": {
+                "time_period_years": time_period_years
+            },
+            "target_fincode": fincode, # Pass the fincode
+            "stock_identifier": compname, # Pass the name for context
+            "return_structured_data": True
+        }
+        # --- END OF FIX ---
+        
+        tech_result = await technicals_app_instance.ainvoke(tech_payload)
+        tech_analysis = tech_result.get("final_answer", {})
+        
+        # If the technical agent had an error, make sure it's captured
+        if not tech_analysis or "error" in tech_analysis:
+             return {**stock, "technical_analysis": {"error": tech_analysis.get("error", "Unknown technical analysis error")}}
+
+        return {**stock, "technical_analysis": tech_analysis}
+
+    tasks = [analyze_technicals(s) for s in candidates]
+    results = await asyncio.gather(*tasks)
+    
+    return {"performance_analysis_results": results}
+
+
+async def aggregate_performance_scores_node(state: FundamentalsAgentState) -> Dict:
+    print("---NODE: Aggregate Performance Scores (Final with Funda Score)---")
+    results = state["performance_analysis_results"]
+    scored_stocks = []
+
+    for stock in results:
+        tech_analysis = stock.get("technical_analysis", {})
+        
+        avg_roce = stock.get("avg_roce") or 0
+        roce_score = min(10, max(0, avg_roce / 4.0))
+        funda_score = roce_score
+
+        if "error" in tech_analysis:
+            print(f"Warning: Technical analysis for '{stock['compname']}' failed with error: {tech_analysis['error']}")
+            tech_score = "N/A"
+            price_cagr, volatility, sharpe_ratio = "N/A", "N/A", "N/A"
+            final_overall_score = round(funda_score, 2)
+        else:
+            tech_score = tech_analysis.get("technical_performance_score", 0)
+            price_cagr = tech_analysis.get("price_cagr_perc", "N/A")
+            volatility = tech_analysis.get("annualized_volatility_perc", "N/A")
+            sharpe_ratio = tech_analysis.get("sharpe_ratio", "N/A")
+            final_overall_score = (0.5 * funda_score) + (0.5 * tech_score)
+
+        # --- THIS IS THE FIX: Added "Funda Score" column ---
+        scored_stocks.append({
+            "Company Name": stock["compname"],
+            "Performance Score": round(final_overall_score, 2) if isinstance(final_overall_score, (int, float)) else final_overall_score,
+            "Funda Score": round(funda_score, 2), # <-- ADDED THIS LINE
+            "Tech Score": round(tech_score, 2) if isinstance(tech_score, (int, float)) else tech_score,
+            "Avg ROCE (%)": round(avg_roce, 2),
+            "Price CAGR (%)": price_cagr,
+            "Volatility (%)": volatility,
+            "Sharpe Ratio": sharpe_ratio,
+        })
+        # --- END OF FIX ---
+
+    sorted_stocks = sorted(
+        scored_stocks, 
+        key=lambda x: x["Performance Score"] if isinstance(x["Performance Score"], (int, float)) else -1, 
+        reverse=True
+    )[:5]
+    
+    methodology = (
+        "The overall Performance Score is a weighted average of Fundamental Quality (ROCE) "
+        "and a comprehensive Technical Score (combining historical price trends and current indicator signals). "
+        "If Technical Score is 'N/A', it means data was unavailable for that stock."
+    )
+    final_result = {"stocks": sorted_stocks, "methodology": methodology}
+    
+    return {"query_results": {"performance_analysis": json.dumps(final_result)}}
+
 
 async def execute_shareholding_pattern_node(state: FundamentalsAgentState) -> Dict:
     """
@@ -920,6 +1158,8 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
     
     extraction = state["extraction"]
 
+    if extraction.is_performance_analysis_query:
+        return "performance_analysis_path"
     if extraction.is_recommendation_query:
         print("Routing to: Recommendation Path")
         return "recommendation_path"
@@ -935,6 +1175,9 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
     if extraction.is_database_required:
         print("Routing to: RAG Path for Specific Metrics")
         return "rag_path"
+    if "General Query" in tasks:
+        print("Routing to: Ranking Query Path (RAG via Guardrail)")
+        return "rag_path"
     else:
         print("Routing to: General Path (No DB required)")
         return "general_path"
@@ -942,9 +1185,14 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
 graph_builder = StateGraph(FundamentalsAgentState)
 
 # Add all nodes, including our new one
+graph_builder.add_node("entry_point", entry_point_node)
 graph_builder.add_node("extract", extract_node)
+graph_builder.add_node("map_industry_and_params", map_industry_and_params_node)
 graph_builder.add_node("select_strategy", select_strategy_node)
 graph_builder.add_node("execute_screener", execute_screener_node)
+graph_builder.add_node("fundamental_filter_and_score", fundamental_filter_and_score_node)
+graph_builder.add_node("parallel_technical_analysis", parallel_technical_analysis_node)
+graph_builder.add_node("aggregate_performance_scores", aggregate_performance_scores_node)
 graph_builder.add_node("execute_shareholding_pattern", execute_shareholding_pattern_node)
 graph_builder.add_node("generalize_and_rag", parallel_generalize_and_rag_node)
 graph_builder.add_node("write_queries", parallel_write_queries_node)
@@ -957,13 +1205,16 @@ graph_builder.add_node("compose_answer", compose_final_answer_node)
 graph_builder.add_node("execute_multi_metric", execute_multi_metric_node)
 
 # EDGES
-graph_builder.set_entry_point("extract")
+graph_builder.set_entry_point("entry_point")
+graph_builder.add_edge("entry_point", "extract")
 
 graph_builder.add_conditional_edges(
     "extract",
     route_after_extraction,
     {
-        "recommendation_path": "select_strategy", 
+       "performance_analysis_path": "map_industry_and_params",
+
+        "recommendation_path": "map_industry_and_params",
         "shareholding_path": "execute_shareholding_pattern", # NEW ROUTE
         "health_check_path": "execute_health_checklist", 
         "multi_metric_path": "execute_multi_metric", 
@@ -972,6 +1223,20 @@ graph_builder.add_conditional_edges(
         "end": END
     }
 )
+
+# --- NEW: Edges after the mapping step ---
+graph_builder.add_conditional_edges("map_industry_and_params", 
+    # A simple router to direct flow after mapping
+    lambda state: state["supervisor_decision"]["route"],
+    {
+        "performance_analysis": "fundamental_filter_and_score",
+        "recommendation": "select_strategy"
+    }
+)
+
+graph_builder.add_edge("fundamental_filter_and_score", "parallel_technical_analysis")
+graph_builder.add_edge("parallel_technical_analysis", "aggregate_performance_scores")
+graph_builder.add_edge("aggregate_performance_scores", "compose_answer")
 
 graph_builder.add_edge("select_strategy", "execute_screener")
 graph_builder.add_edge("execute_screener", "compose_answer")

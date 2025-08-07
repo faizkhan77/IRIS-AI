@@ -728,57 +728,71 @@ def aggregate_signals(
     }
 
 
-
-
 def calculate_historical_performance_score(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Calculates a comprehensive technical performance score based on historical data.
-    This is NOT a point-in-time signal, but an evaluation over the entire period.
+    Calculates a comprehensive technical performance score based on historical data AND
+    point-in-time indicators. This is an evaluation over the entire period, enhanced
+    with a current sentiment snapshot.
     """
     df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
-    if df is None or len(df) < 200: # Require at least ~10 months of data for meaningful stats
+    if df is None or len(df) < 200: # Require at least ~10 months of data
         return {"error": "Insufficient data for historical performance analysis (requires at least 200 trading days)."}
 
     try:
-        # Metric 1: Price Appreciation (CAGR)
+        # === Part 1: Historical Performance Metrics ===
         start_price = df['close'].iloc[0]
         end_price = df['close'].iloc[-1]
         num_years = len(df) / 252.0  # Approx. trading days in a year
         price_cagr = ((end_price / start_price) ** (1 / num_years) - 1) * 100 if num_years > 0 and start_price > 0 else 0
 
-        # Metric 2: Volatility (Annualized Standard Deviation of daily returns)
         daily_returns = df['close'].pct_change().dropna()
         volatility = daily_returns.std() * np.sqrt(252) * 100
 
-        # Metric 3: Sharpe Ratio (simple version, assuming 5% risk-free rate)
         risk_free_rate = 0.05
         avg_daily_return = daily_returns.mean()
         std_dev_daily_return = daily_returns.std()
         sharpe_ratio = ((avg_daily_return * 252) - risk_free_rate) / (std_dev_daily_return * np.sqrt(252)) if std_dev_daily_return > 0 else 0
 
-        # --- Scoring Logic (0-10 scale) ---
-        # CAGR Score: Scaled up to 50% CAGR for a max score of 10
+        # --- Historical Scoring Logic (0-10 scale) ---
         cagr_score = min(10, max(0, price_cagr / 5.0))
-        # Volatility Score: Lower is better. Score 10 for <15% volatility, 0 for >55%
         volatility_score = min(10, max(0, 10 - ((volatility - 15) / 4.0)))
-        # Sharpe Ratio Score: Higher is better. Score 10 for Sharpe >= 1.5
         sharpe_score = min(10, max(0, (sharpe_ratio + 0.5) * 5))
+        historical_score = (0.4 * cagr_score) + (0.4 * sharpe_score) + (0.2 * volatility_score)
 
-        # --- Final Weighted Score ---
-        # For "consistent performance", we value risk-adjusted returns (Sharpe) and growth (CAGR) highly.
-        final_score = (0.4 * cagr_score) + (0.4 * sharpe_score) + (0.2 * volatility_score)
+        # === Part 2: Point-in-Time Indicator Aggregation ===
+        indicators_to_run = [
+            ("rsi", calculate_rsi(price_data_list_of_dicts)),
+            ("macd", calculate_macd(price_data_list_of_dicts)),
+            ("supertrend", calculate_supertrend(price_data_list_of_dicts)),
+            ("adx", calculate_adx(price_data_list_of_dicts))
+        ]
+        # Filter out any indicators that resulted in an error before aggregating
+        valid_indicators = [(name, result) for name, result in indicators_to_run if "error" not in result]
+        
+        aggregation = aggregate_signals(valid_indicators)
+        point_in_time_composite_score = aggregation.get("composite_score", 0) # Score from -2 to +2
 
+        # Normalize the -2 to +2 score to a 0 to 10 scale
+        # (0 -> 5, -2 -> 0, +2 -> 10)
+        point_in_time_score_10_scale = ((point_in_time_composite_score + 2) / 4) * 10
+
+        # === Part 3: Final Combined Score ===
+        # Give more weight to long-term historical performance
+        final_technical_score = (0.7 * historical_score) + (0.3 * point_in_time_score_10_scale)
+
+        # --- Return a complete dictionary with all metrics for the frontend. ---
         return {
             "signal": "historical_performance",
-            "technical_performance_score": round(final_score, 2),
+            "technical_performance_score": round(final_technical_score, 2), # This is the new, combined score
             "price_cagr_perc": round(price_cagr, 2),
             "annualized_volatility_perc": round(volatility, 2),
             "sharpe_ratio": round(sharpe_ratio, 2),
-            "note": f"Performance analysis over {num_years:.1f} years."
+            "note": f"Performance analysis over {num_years:.1f} years, combining historical data with current indicator sentiment."
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"error": f"Error during historical performance calculation: {str(e)}"}
-
 
 # Map of indicator names to their calculation functions
 INDICATOR_TOOLS_MAP = {
