@@ -6,7 +6,7 @@ ASYNC_DB_PASSWORD = "R22.Mane"
 ASYNC_DB_HOST = "localhost"
 ASYNC_DB_NAME = "accord_base_live"
 
-ASYNC_DATABASE_URL = f"mysql+aiomysql://root:R22.Mane@localhost/accord_base_live"
+ASYNC_DATABASE_URL = f"mysql+aiomysql://root:root@localhost/accord_base_live"
 async_engine = create_async_engine(ASYNC_DATABASE_URL)
 
 
