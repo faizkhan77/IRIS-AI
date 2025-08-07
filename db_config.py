@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import create_engine
 
 ASYNC_DB_USER = "root"
-ASYNC_DB_PASSWORD = "R22.Mane"
+ASYNC_DB_PASSWORD = "root"
 ASYNC_DB_HOST = "localhost"
 ASYNC_DB_NAME = "accord_base_live"
 
@@ -11,7 +11,7 @@ async_engine = create_async_engine(ASYNC_DATABASE_URL)
 
 
 SYNC_DB_USER = "root"
-SYNC_DB_PASSWORD = "R22.Mane"
+SYNC_DB_PASSWORD = "root"
 SYNC_DB_HOST = "localhost"
 SYNC_DB_NAME = "accord_base_live"
 

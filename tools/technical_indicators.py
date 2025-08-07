@@ -727,6 +727,73 @@ def aggregate_signals(
         "breakdown": breakdown
     }
 
+
+def calculate_historical_performance_score(price_data_list_of_dicts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Calculates a comprehensive technical performance score based on historical data AND
+    point-in-time indicators. This is an evaluation over the entire period, enhanced
+    with a current sentiment snapshot.
+    """
+    df = _convert_to_dataframe_and_standardize(price_data_list_of_dicts)
+    if df is None or len(df) < 200: # Require at least ~10 months of data
+        return {"error": "Insufficient data for historical performance analysis (requires at least 200 trading days)."}
+
+    try:
+        # === Part 1: Historical Performance Metrics ===
+        start_price = df['close'].iloc[0]
+        end_price = df['close'].iloc[-1]
+        num_years = len(df) / 252.0  # Approx. trading days in a year
+        price_cagr = ((end_price / start_price) ** (1 / num_years) - 1) * 100 if num_years > 0 and start_price > 0 else 0
+
+        daily_returns = df['close'].pct_change().dropna()
+        volatility = daily_returns.std() * np.sqrt(252) * 100
+
+        risk_free_rate = 0.05
+        avg_daily_return = daily_returns.mean()
+        std_dev_daily_return = daily_returns.std()
+        sharpe_ratio = ((avg_daily_return * 252) - risk_free_rate) / (std_dev_daily_return * np.sqrt(252)) if std_dev_daily_return > 0 else 0
+
+        # --- Historical Scoring Logic (0-10 scale) ---
+        cagr_score = min(10, max(0, price_cagr / 5.0))
+        volatility_score = min(10, max(0, 10 - ((volatility - 15) / 4.0)))
+        sharpe_score = min(10, max(0, (sharpe_ratio + 0.5) * 5))
+        historical_score = (0.4 * cagr_score) + (0.4 * sharpe_score) + (0.2 * volatility_score)
+
+        # === Part 2: Point-in-Time Indicator Aggregation ===
+        indicators_to_run = [
+            ("rsi", calculate_rsi(price_data_list_of_dicts)),
+            ("macd", calculate_macd(price_data_list_of_dicts)),
+            ("supertrend", calculate_supertrend(price_data_list_of_dicts)),
+            ("adx", calculate_adx(price_data_list_of_dicts))
+        ]
+        # Filter out any indicators that resulted in an error before aggregating
+        valid_indicators = [(name, result) for name, result in indicators_to_run if "error" not in result]
+        
+        aggregation = aggregate_signals(valid_indicators)
+        point_in_time_composite_score = aggregation.get("composite_score", 0) # Score from -2 to +2
+
+        # Normalize the -2 to +2 score to a 0 to 10 scale
+        # (0 -> 5, -2 -> 0, +2 -> 10)
+        point_in_time_score_10_scale = ((point_in_time_composite_score + 2) / 4) * 10
+
+        # === Part 3: Final Combined Score ===
+        # Give more weight to long-term historical performance
+        final_technical_score = (0.7 * historical_score) + (0.3 * point_in_time_score_10_scale)
+
+        # --- Return a complete dictionary with all metrics for the frontend. ---
+        return {
+            "signal": "historical_performance",
+            "technical_performance_score": round(final_technical_score, 2), # This is the new, combined score
+            "price_cagr_perc": round(price_cagr, 2),
+            "annualized_volatility_perc": round(volatility, 2),
+            "sharpe_ratio": round(sharpe_ratio, 2),
+            "note": f"Performance analysis over {num_years:.1f} years, combining historical data with current indicator sentiment."
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": f"Error during historical performance calculation: {str(e)}"}
+
 # Map of indicator names to their calculation functions
 INDICATOR_TOOLS_MAP = {
     "rsi": calculate_rsi,
@@ -742,7 +809,8 @@ INDICATOR_TOOLS_MAP = {
     "vwap": calculate_vwap,
     "stochastic": calculate_stochastic_oscillator,
     "stddev": calculate_standard_deviation,
-    "obv": calculate_obv
+    "obv": calculate_obv,
+     "historical_performance_score": calculate_historical_performance_score
 }
 
 # Default set of indicators for a general "should I buy/sell" query
