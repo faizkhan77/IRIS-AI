@@ -192,10 +192,10 @@ EXTRACT_PROMPT = """
         -   The value for the task **MUST** be a single, descriptive **STRING**.
 
     6. **Simple Ranking Query:**
-        -   Is the user asking for a **LIST or RANKING** of stocks based on a **single, specific, current metric** (e.g., "top y by X", "companies with highest X")?
-        -   If YES, you MUST set `is_multi_metric_query` to `false`.
-        -   The key in the `tasks` dictionary MUST be `"General Query"`.
-        -   The value for the task MUST be a single, descriptive **STRING**.
+        -   Is the user asking for a **LIST or RANKING** of stocks based on a **single metric**?
+        -   If YES, you **MUST** set `is_multi_metric_query` to `false`.
+        -   The `tasks` dictionary key **MUST** be `"General Query"`.
+        -   The `tasks` dictionary value **MUST** be a **STRING**.
 
     7.  **Specific Metric / Simple Lookup (Default):**
         - If NONE of the above match, it is a simple query for a single metric.
@@ -218,6 +218,9 @@ EXTRACT_PROMPT = """
 
     User Question: "What are the top y companies by X?"
     Your Output: {{"is_database_required": true, "is_recommendation_query": false, "is_performance_analysis_query": false, "is_health_checklist_query": false, "is_multi_metric_query": false, "is_shareholding_query": false, "entities": [], "tasks": {{"General Query": "top y companies by X"}}, "known_schema_lookups": null}}
+
+    User Question: "top X companies by Y {{Y is some Fundamental metric}}"
+    Your Output: {{"is_database_required": true, "is_recommendation_query": false, "is_performance_analysis_query": false, "is_health_checklist_query": false, "is_multi_metric_query": false, "is_shareholding_query": false, "entities": [], "tasks": {{"General Query": "top X companies by Y"}}, "known_schema_lookups": null}}
 
     ---
     User Question: {question}
@@ -1148,16 +1151,23 @@ async def compose_final_answer_node(state: FundamentalsAgentState) -> Dict:
 
 def route_after_extraction(state: FundamentalsAgentState) -> str:
     """
-    Decides the path after the initial query extraction.
-    - If it's a health check, go to the hard-coded tool.
-    - If multi-metric -> multi_metric_path (NEW)
-    - If DB is not needed, go straight to the answer.
-    - Otherwise, go to the RAG path.
+    Decides the path after the initial query extraction, with a definitive guardrail for ranking queries.
     """
-    if state.get("error_message"): return "end"
+    if state.get("error_message"):
+        return "end"
     
     extraction = state["extraction"]
+    tasks = extraction.tasks
 
+    # --- DEFINITIVE GUARDRAIL ---
+    # The presence of "General Query" as a task key is the TRUEST signal of a ranking query.
+    # If this key exists, we FORCE the agent down the simple rag_path.
+    # This prevents it from ever going to the broken multi_metric_path for rankings.
+    if "General Query" in tasks:
+        print("Routing to: Ranking Query Path (FORCED by Guardrail)")
+        return "rag_path"
+
+    # --- ALL OTHER ROUTES (will only be evaluated if the guardrail is not met) ---
     if extraction.is_performance_analysis_query:
         return "performance_analysis_path"
     if extraction.is_recommendation_query:
@@ -1174,9 +1184,6 @@ def route_after_extraction(state: FundamentalsAgentState) -> str:
         return "multi_metric_path"
     if extraction.is_database_required:
         print("Routing to: RAG Path for Specific Metrics")
-        return "rag_path"
-    if "General Query" in tasks:
-        print("Routing to: Ranking Query Path (RAG via Guardrail)")
         return "rag_path"
     else:
         print("Routing to: General Path (No DB required)")
